@@ -518,16 +518,17 @@ class Sniper:
         if cfg.buyout_select_delay_ms:
             self.sleeper(cfg.buyout_select_delay_ms / 1000.0)
         self._press("enter")
-        # Tight 1.0s wait: typical BUY_OUT dialog render is 200-400ms so
-        # 1.0s is ~3x margin while shaving 1.5s off the wasted time
-        # whenever the moving_background flag is wrong and the templates
-        # never match.
-        seen = self.wait_for({Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, 1.0)
+        # Typical BUY_OUT dialog render is 200-400ms, but slower network /
+        # menu render can need more slack. Keep this configurable so users can
+        # tune reliability without changing code.
+        dialog_timeout = max(0.2, float(cfg.buyout_dialog_timeout_s))
+        seen = self.wait_for(
+            {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
         if seen == Screen.PLAYER_OPTIONS:
             return self._escape_player_options()
         if seen is None and self._try_toggle_moving_background():
             seen = self.wait_for(
-                {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, 1.0)
+                {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
             if seen == Screen.PLAYER_OPTIONS:
                 return self._escape_player_options()
         if seen is None:

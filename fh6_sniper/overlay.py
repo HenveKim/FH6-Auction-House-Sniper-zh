@@ -39,6 +39,7 @@ _SETTINGS_FIELDS = (
     ("蹲守行为", "match_threshold",        "匹配阈值", "slider", (0.50, 1.00, 0.01)),
     ("蹲守行为", "loop_pace_s",            "循环间隔（秒）", "float",  None),
     ("蹲守行为", "buyout_select_delay_ms", "买断选择延迟（毫秒）", "int",  None),
+    ("蹲守行为", "buyout_dialog_timeout_s", "买断确认等待（秒）", "float", None),
     ("自动停止", "max_cars",               "最大车辆数", "int",    None),
     ("自动停止", "max_minutes",            "最大分钟数", "float",  None),
     ("热键",     "hotkey_start_stop",      "开始/停止热键", "str",    None),
@@ -51,7 +52,7 @@ class Overlay:
 
     def __init__(self, hide_from_capture: bool = True):
         self.root = tk.Tk()
-        self.root.title("FH6 蹲守系统")
+        self.root.title("FH6 拍卖行自动蹲车系统")
         self.root.attributes("-topmost", True)
         self.root.overrideredirect(True)
         self.root.configure(bg=_BG)
@@ -115,7 +116,7 @@ class Overlay:
         brand = tk.Label(header, text="  FH6", bg=_BG, fg=_LIME,
                          font=("Segoe UI", 11, "bold"))
         brand.pack(side="left")
-        name = tk.Label(header, text=" 蹲守", bg=_BG, fg=_TEXT,
+        name = tk.Label(header, text=" 拍卖行自动蹲车", bg=_BG, fg=_TEXT,
                         font=("Segoe UI", 11, "bold"))
         name.pack(side="left")
         close = tk.Label(header, text="✕", bg=_BG, fg=_DIM,

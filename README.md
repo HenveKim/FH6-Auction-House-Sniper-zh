@@ -105,6 +105,7 @@
 - **collect\_after\_buyout** - 如果你希望手动领取车辆，请设为 `false`
 - **notify\_sound** / **notify\_toast** - 关闭获胜提示音或通知弹窗
 - **buyout\_select\_delay\_ms** - 在选择 Buy Out 与按 Enter 之间额外等待的毫秒数。如果机器人偶尔打开 Place Bid 对话框而不是 Buy Out，可以调到 `200`（默认：0）
+- **buyout\_dialog\_timeout\_s** - 按下 Enter 后等待 Buy Out 确认框出现的秒数。如果网络或菜单加载较慢，可以调到 `2.5` 或更高（默认：2.5）
 - **moving\_background** - 如果你已在 FH6 中**关闭**动态背景视频设置，请设为 `false`（默认：true）
 
 ***
