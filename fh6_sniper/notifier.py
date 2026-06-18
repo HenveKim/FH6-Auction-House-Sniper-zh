@@ -23,7 +23,7 @@ def log_purchase(log_path, outcome: str, loop_seconds: float,
 
 
 def notify_success(car_count: int, sound: bool, toast: bool) -> None:
-    """Beep + Windows toast after a successful buy."""
+    """成功买断后播放提示音并显示 Windows 通知。"""
     if sound:
         try:
             import winsound
@@ -33,7 +33,7 @@ def notify_success(car_count: int, sound: bool, toast: bool) -> None:
     if toast:
         try:
             from win11toast import toast as show_toast
-            show_toast("FH6 Sniper",
-                       f"Car bought ({car_count} this session)")
+            show_toast("FH6 蹲守系统",
+                       f"已买到车辆（本次运行共 {car_count} 辆）")
         except Exception:
             pass

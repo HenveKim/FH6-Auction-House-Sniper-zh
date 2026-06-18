@@ -5,11 +5,31 @@ import logging
 import sys
 import threading
 from dataclasses import asdict
+from pathlib import Path
 from pynput import keyboard
-from . import capture, notifier, paths, vision
-from .config import load_config, save_config
-from .overlay import Overlay
-from .sniper import GameIO, Sniper
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from fh6_sniper import capture, notifier, paths, vision
+    from fh6_sniper.config import load_config, save_config
+    from fh6_sniper.overlay import Overlay
+    from fh6_sniper.sniper import GameIO, Sniper
+else:
+    from . import capture, notifier, paths, vision
+    from .config import load_config, save_config
+    from .overlay import Overlay
+    from .sniper import GameIO, Sniper
+
+
+def _prefer_utf8_console() -> None:
+    """Keep IDE runner output readable when it expects UTF-8 on Windows."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None or not hasattr(stream, "reconfigure"):
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def _log_config(cfg) -> None:
@@ -27,6 +47,7 @@ def _log_config(cfg) -> None:
 
 
 def _setup_logging():
+    _prefer_utf8_console()
     log_path = paths.app_dir() / "logs" / "sniper.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter(
@@ -98,7 +119,7 @@ def main() -> None:
                 logging.getLogger("fh6.main").exception(
                     "sniper thread crashed")
                 try:
-                    overlay.set_status("Crashed: see sniper.log")
+                    overlay.set_status("崩溃：请查看 sniper.log")
                 except Exception:
                     pass
 
@@ -147,7 +168,7 @@ def main() -> None:
             save_config(cfg, paths.app_dir() / "config.json")
         except Exception as exc:
             log.exception("save_config failed")
-            return f"Could not save config: {exc}"
+            return f"无法保存配置：{exc}"
         if cfg.moving_background != prev_bg:
             try:
                 io.templates = vision.load_templates(
@@ -157,7 +178,7 @@ def main() -> None:
                          cfg.moving_background)
             except Exception as exc:
                 log.exception("template reload failed")
-                return f"Saved, but template reload failed: {exc}"
+                return f"已保存，但模板重新加载失败：{exc}"
         if (cfg.hotkey_start_stop != prev_start
                 or cfg.hotkey_panic != prev_panic):
             try:
@@ -168,13 +189,13 @@ def main() -> None:
                          cfg.hotkey_start_stop, cfg.hotkey_panic)
             except Exception as exc:
                 log.exception("hotkey rebind failed")
-                return f"Saved, but hotkey rebind failed: {exc}"
+                return f"已保存，但热键重新绑定失败：{exc}"
         return None
 
     overlay.bind_settings(cfg)
     overlay.on_save(apply_settings)
     overlay.on_toggle(toggle)
-    overlay.set_status("Idle")
+    overlay.set_status("空闲")
     try:
         overlay.run()
     finally:

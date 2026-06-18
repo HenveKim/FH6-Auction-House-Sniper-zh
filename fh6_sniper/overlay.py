@@ -17,24 +17,32 @@ _STOP     = "#e0524b"
 _STOP_HV  = "#c43f39"
 _START_HV = "#b0d800"
 
-_STOPPED_WORDS = ("idle", "stopped", "auto-stop", "lost", "could not", "crashed")
+_PAUSED_WORDS = ("paused", "暂停")
+_STOPPED_WORDS = (
+    "idle", "stopped", "auto-stop", "lost", "could not", "crashed",
+    "空闲", "已停止", "自动停止", "无法恢复", "崩溃",
+)
+_TAB_LABELS = {
+    "STATUS": "状态",
+    "SETTINGS": "设置",
+}
 
 _SETTINGS_FIELDS = (
     # (group, key, label, kind, options)
-    ("FEEDBACK",         "collect_after_buyout",   "Collect won vehicles automatically", "bool", None),
-    ("FEEDBACK",         "moving_background",      "Moving background mode (FH6 video)", "bool", None),
-    ("FEEDBACK",         "notify_sound",           "Play success beep sounds",           "bool", None),
-    ("FEEDBACK",         "notify_toast",           "Windows toast on success",           "bool", None),
-    ("FEEDBACK",         "hdr_mode",               "HDR mode (widens lime detection)",   "bool", None),
-    ("FEEDBACK",         "overlay_capturable",     "Show overlay in screenshots & recordings", "bool", None),
-    ("FEEDBACK",         "win32_api_input",        "Win32 API input (background key presses)", "bool", None),
-    ("SNIPER BEHAVIOUR", "match_threshold",        "Match threshold",        "slider", (0.50, 1.00, 0.01)),
-    ("SNIPER BEHAVIOUR", "loop_pace_s",            "Loop pace (seconds)",    "float",  None),
-    ("SNIPER BEHAVIOUR", "buyout_select_delay_ms", "Buyout select delay (ms)", "int",  None),
-    ("AUTO-STOP",        "max_cars",               "Max cars",               "int",    None),
-    ("AUTO-STOP",        "max_minutes",            "Max minutes",            "float",  None),
-    ("HOTKEYS",          "hotkey_start_stop",      "Start / stop hotkey",    "str",    None),
-    ("HOTKEYS",          "hotkey_panic",           "Panic stop hotkey",      "str",    None),
+    ("常用",     "collect_after_buyout",   "自动领取已赢车辆", "bool", None),
+    ("常用",     "moving_background",      "动态背景模式（FH6 视频）", "bool", None),
+    ("常用",     "notify_sound",           "成功时播放提示音", "bool", None),
+    ("常用",     "notify_toast",           "成功时显示 Windows 通知", "bool", None),
+    ("常用",     "hdr_mode",               "HDR 模式（扩大绿色识别范围）", "bool", None),
+    ("常用",     "overlay_capturable",     "允许截图/录制捕获悬浮窗", "bool", None),
+    ("常用",     "win32_api_input",        "Win32 API 输入（后台按键）", "bool", None),
+    ("蹲守行为", "match_threshold",        "匹配阈值", "slider", (0.50, 1.00, 0.01)),
+    ("蹲守行为", "loop_pace_s",            "循环间隔（秒）", "float",  None),
+    ("蹲守行为", "buyout_select_delay_ms", "买断选择延迟（毫秒）", "int",  None),
+    ("自动停止", "max_cars",               "最大车辆数", "int",    None),
+    ("自动停止", "max_minutes",            "最大分钟数", "float",  None),
+    ("热键",     "hotkey_start_stop",      "开始/停止热键", "str",    None),
+    ("热键",     "hotkey_panic",           "紧急停止热键", "str",    None),
 )
 
 
@@ -43,12 +51,12 @@ class Overlay:
 
     def __init__(self, hide_from_capture: bool = True):
         self.root = tk.Tk()
-        self.root.title("FH6 Sniper")
+        self.root.title("FH6 蹲守系统")
         self.root.attributes("-topmost", True)
         self.root.overrideredirect(True)
         self.root.configure(bg=_BG)
 
-        self._status_var = tk.StringVar(value="Idle")
+        self._status_var = tk.StringVar(value="空闲")
         self._bought_var = tk.StringVar(value="0")
         self._searches_var = tk.StringVar(value="0")
         self._fails_var = tk.StringVar(value="0")
@@ -107,7 +115,7 @@ class Overlay:
         brand = tk.Label(header, text="  FH6", bg=_BG, fg=_LIME,
                          font=("Segoe UI", 11, "bold"))
         brand.pack(side="left")
-        name = tk.Label(header, text=" SNIPER", bg=_BG, fg=_TEXT,
+        name = tk.Label(header, text=" 蹲守", bg=_BG, fg=_TEXT,
                         font=("Segoe UI", 11, "bold"))
         name.pack(side="left")
         close = tk.Label(header, text="✕", bg=_BG, fg=_DIM,
@@ -130,7 +138,7 @@ class Overlay:
         self._build_status_tab(self._body)
         self._build_settings_tab(self._body)
 
-        tk.Label(root, text="F8  start / stop          F9  panic",
+        tk.Label(root, text="F8  开始 / 停止          F9  紧急停止",
                  bg=_BG, fg=_DIM, font=("Segoe UI", 8)).pack(pady=(12, 15))
 
     def _build_tab_bar(self, root):
@@ -139,7 +147,7 @@ class Overlay:
         for tab in ("STATUS", "SETTINGS"):
             cell = tk.Frame(bar, bg=_BG)
             cell.pack(side="left", expand=True, fill="x")
-            lbl = tk.Label(cell, text=tab, bg=_BG, fg=_DIM,
+            lbl = tk.Label(cell, text=_TAB_LABELS[tab], bg=_BG, fg=_DIM,
                            font=("Segoe UI", 9, "bold"),
                            pady=8, cursor="hand2")
             lbl.pack(fill="x")
@@ -160,7 +168,7 @@ class Overlay:
         self._build_stats(frame)
 
         self._btn = tk.Button(
-            frame, text="START", font=("Segoe UI", 10, "bold"),
+            frame, text="开始", font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, highlightthickness=0, cursor="hand2",
             height=2)
         self._btn.pack(fill="x", padx=18, pady=(14, 0))
@@ -174,10 +182,10 @@ class Overlay:
     def _build_stats(self, parent):
         card = tk.Frame(parent, bg=_CARD)
         card.pack(fill="x", padx=18, pady=(13, 0))
-        cells = (("BOUGHT", self._bought_var, _LIME),
-                 ("SEARCHES", self._searches_var, _TEXT),
-                 ("FAILS", self._fails_var, _RED),
-                 ("UPTIME", self._time_var, _TEXT))
+        cells = (("已购", self._bought_var, _LIME),
+                 ("搜索", self._searches_var, _TEXT),
+                 ("失败", self._fails_var, _RED),
+                 ("时长", self._time_var, _TEXT))
         for i, (caption, var, color) in enumerate(cells):
             if i:
                 tk.Frame(card, bg=_DIVIDER, width=1).pack(
@@ -227,7 +235,7 @@ class Overlay:
             buckets[g].append((key, label, kind, opts))
 
         for group in order:
-            if group == "FEEDBACK":
+            if group == "常用":
                 self._build_feedback_section(
                     self._settings_interior, group, buckets[group])
             else:
@@ -241,7 +249,7 @@ class Overlay:
         self._save_msg_label.pack(fill="x", padx=18, pady=(8, 0))
 
         self._save_btn = tk.Button(
-            frame, text="SAVE SETTINGS", font=("Segoe UI", 10, "bold"),
+            frame, text="保存设置", font=("Segoe UI", 10, "bold"),
             relief="flat", bd=0, highlightthickness=0, cursor="hand2",
             bg=_LIME, fg=_BG, activebackground=_START_HV,
             activeforeground=_BG, height=2, command=self._on_save_clicked)
@@ -484,9 +492,9 @@ class Overlay:
 
     def _set_button(self, running: bool):
         if running:
-            text, base, hover, fg = "STOP", _STOP, _STOP_HV, "#ffffff"
+            text, base, hover, fg = "停止", _STOP, _STOP_HV, "#ffffff"
         else:
-            text, base, hover, fg = "START", _LIME, _START_HV, _BG
+            text, base, hover, fg = "开始", _LIME, _START_HV, _BG
         self._btn_base, self._btn_hover = base, hover
         self._btn.config(text=text, bg=base, fg=fg,
                          activebackground=hover, activeforeground=fg)
@@ -494,7 +502,7 @@ class Overlay:
     @staticmethod
     def _state_of(text: str) -> str:
         low = text.lower()
-        if "paused" in low:
+        if any(w in low for w in _PAUSED_WORDS):
             return "paused"
         if any(w in low for w in _STOPPED_WORDS):
             return "stopped"
@@ -546,10 +554,10 @@ class Overlay:
         if self._threshold_label is not None:
             v = float(self._field_vars["match_threshold"].get())
             self._threshold_label.config(
-                text=f"MATCH THRESHOLD ({v:.2f})")
+                text=f"匹配阈值 ({v:.2f})")
 
     def on_save(self, callback) -> None:
-        """Wire SAVE SETTINGS to a callback(values_dict) -> error_msg or None."""
+        """Wire the save button to a callback(values_dict) -> error_msg or None."""
         self._save_callback = callback
 
     def _collect_values(self):
@@ -568,7 +576,7 @@ class Overlay:
                 else:
                     out[key] = str(raw).strip()
             except (ValueError, TypeError):
-                return None, f"Bad value for {label}"
+                return None, f"{label} 的值无效"
         return out, None
 
     def _on_save_clicked(self):
@@ -577,17 +585,17 @@ class Overlay:
             self._show_save_msg(err, _RED)
             return
         if self._save_callback is None:
-            self._show_save_msg("Saved", _LIME)
+            self._show_save_msg("已保存", _LIME)
             return
         try:
             result = self._save_callback(values)
         except Exception as exc:                   # surface callback failure
-            self._show_save_msg(f"Save failed: {exc}", _RED)
+            self._show_save_msg(f"保存失败：{exc}", _RED)
             return
         if result:
             self._show_save_msg(str(result), _RED)
         else:
-            self._show_save_msg("Saved", _LIME)
+            self._show_save_msg("已保存", _LIME)
 
     def _show_save_msg(self, text, color):
         self._save_msg_var.set(text)
@@ -616,7 +624,7 @@ class Overlay:
             pass
 
     def on_toggle(self, callback):
-        """Wire the START/STOP button to a callback."""
+        """Wire the start/stop button to a callback."""
         self._btn.config(command=callback)
 
     def run(self):

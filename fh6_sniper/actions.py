@@ -43,9 +43,9 @@ def _rand_seconds(ms_range) -> float:
 
 def press_key(name, key_hold_ms, between_keys_ms,
               use_win32=False, keyboard=_DEFAULT_KEYBOARD,
-              sleep=time.sleep) -> None:
+              sleep=time.sleep, window_title="Forza Horizon 6") -> None:
     if use_win32:
-        press_key_vk(name, key_hold_ms, between_keys_ms, sleep)
+        press_key_vk(name, key_hold_ms, between_keys_ms, sleep, window_title)
     else:
         press_key_fg(name, key_hold_ms, between_keys_ms, keyboard, sleep)
 
@@ -61,9 +61,9 @@ def press_key_fg(name, key_hold_ms, between_keys_ms,
 
 
 def press_key_vk(name, key_hold_ms, between_keys_ms,
-                 sleep=time.sleep) -> None:
+                 sleep=time.sleep, window_title="Forza Horizon 6") -> None:
     """Press one key with a randomized hold and post-press gap using win32 API."""
-    hwnd = get_hwnd()
+    hwnd = get_hwnd(window_title)
     if not hwnd:
         return
     vk_code = VK_CODES[name]
@@ -75,8 +75,8 @@ def press_key_vk(name, key_hold_ms, between_keys_ms,
 
 def tap_key(name, times, key_hold_ms, between_keys_ms,
             use_win32=False, keyboard=_DEFAULT_KEYBOARD,
-            sleep=time.sleep) -> None:
+            sleep=time.sleep, window_title="Forza Horizon 6") -> None:
     """Press a key `times` times."""
     for _ in range(times):
         press_key(name, key_hold_ms, between_keys_ms,
-                  use_win32, keyboard, sleep)
+                  use_win32, keyboard, sleep, window_title)

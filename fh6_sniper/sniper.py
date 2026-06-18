@@ -2,10 +2,19 @@
 from __future__ import annotations
 import logging
 import random
+import sys
 import time
-from . import actions, capture, paths, vision
-from .config import save_config
-from .vision import Screen
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from fh6_sniper import actions, capture, paths, vision
+    from fh6_sniper.config import save_config
+    from fh6_sniper.vision import Screen
+else:
+    from . import actions, capture, paths, vision
+    from .config import save_config
+    from .vision import Screen
 
 log = logging.getLogger("fh6.sniper")
 
@@ -62,7 +71,8 @@ class GameIO:
         log.info("press %s%s", name, f" x{times}" if times > 1 else "")
         actions.tap_key(name, times,
                         self.cfg.key_hold_ms, self.cfg.between_keys_ms,
-                        use_win32=self.cfg.win32_api_input)
+                        use_win32=self.cfg.win32_api_input,
+                        window_title=self.cfg.window_title)
 
 
 class Sniper:
@@ -111,13 +121,13 @@ class Sniper:
         self.sleeper(random.uniform(lo, hi) / 1000.0)
 
     def _guard_focus(self) -> None:
-        """Block until FH6 is the foreground window. Sets the Paused status
+        """Block until FH6 is the foreground window. Sets the paused status
         once on entry, not on every tick."""
         if self.cfg.win32_api_input:
             return
         if self.io.focused():
             return
-        self._status("Paused: FH6 not focused")
+        self._status("暂停：FH6 未聚焦")
         while not self.io.focused():
             if self._stop:
                 return
@@ -200,7 +210,7 @@ class Sniper:
         log.info("auto-toggle moving_background -> %s "
                  "(verified against frame; templates swapped, "
                  "saved to config.json)", new_value)
-        self._status(f"Auto-toggled moving background -> {new_value}")
+        self._status(f"已自动切换动态背景模式 -> {new_value}")
         return True
 
     def wait_for(self, screens: set, timeout: float):
@@ -265,14 +275,14 @@ class Sniper:
             self._press("esc")
             s = self._await_settle(prev=s)
         if self._oriented:
-            self._status("Lost: start the bot in the Auction House")
+            self._status("已停止：请在拍卖行内启动")
         else:
-            self._status("Lost: set game language to English")
+            self._status("已停止：请将游戏语言设为 English US")
         return False
 
     def _enter_search_from_landing(self, known=None) -> bool:
         """From the AH landing menu, open Search Auctions."""
-        self._status("Opening Search Auctions")
+        self._status("正在打开搜索拍卖")
         for attempt in range(1, 5):
             if self._stop:
                 return False
@@ -316,7 +326,7 @@ class Sniper:
         (e.g. the Place Bid dialog) and need to back out. ESC only ever
         closes popups, never confirms anything.
         """
-        self._status("Recovering")
+        self._status("正在恢复")
         s = self.io.screen()
         unknown_streak = 0
         for _ in range(10):
@@ -375,7 +385,7 @@ class Sniper:
         Returns "no_cars" - the car was sold before we could snipe it,
         which is a missed-search, not a failed buyout.
         """
-        self._status("Listing already sold, skipping")
+        self._status("车辆已售出，正在跳过")
         for _ in range(6):
             if self._stop:
                 return "recover_failed"
@@ -432,7 +442,7 @@ class Sniper:
     def _collect(self) -> None:
         """Collect a won car. The Claim Car popup has two stages that both
         read as CLAIM_CAR; press Enter until the screen leaves it."""
-        self._status("Collecting car")
+        self._status("正在领取车辆")
         if self._press_until("y", Screen.RESULTS_HAS_CARS,
                              {Screen.AUCTION_OPTIONS}) is None:
             return
@@ -462,7 +472,7 @@ class Sniper:
         if not self._goto_search_config():
             return "recover_failed"
 
-        self._status("Searching")
+        self._status("搜索中")
         if not self._navigate_to_confirm():
             return self._recover()
         result = self._press_until(
@@ -481,16 +491,16 @@ class Sniper:
 
         slot = self.io.first_buyable_slot()
         if slot == 0:
-            self._status("All listings sold, skipping")
+            self._status("列表均已售出，正在跳过")
             self._back_to_landing(known=result)
             return "no_cars"
 
-        self._status("Car found, buying out")
+        self._status("发现车辆，正在买断")
         for _ in range(slot - 1):
             self._press("down")
 
         if slot > 1 and self.io.first_buyable_slot() != slot:
-            self._status("Listing sold during navigation, skipping")
+            self._status("导航时车辆已售出，正在跳过")
             self._back_to_landing(known=result)
             return "no_cars"
 
@@ -554,10 +564,10 @@ class Sniper:
         """
         self.started_at = self.clock()
         log.info("=== sniper started ===")
-        self._status("Running")
+        self._status("运行中")
         while not self._stop:
             if self._auto_stop_reached():
-                self._status("Auto-stop limit reached")
+                self._status("已自动停止：达到限制")
                 return "auto_stop"
             self._guard_focus()
             if self._stop:
@@ -569,19 +579,23 @@ class Sniper:
             if outcome == "recover_failed":
                 self._emit_stats()
                 if self._oriented:
-                    self._status("Stopped: could not recover")
+                    self._status("已停止：无法恢复")
                 else:
-                    self._status("Stopped: set game language to English")
+                    self._status("已停止：请将游戏语言设为 English US")
                 return "recover_failed"
             if outcome == "failed":
                 self.failed_buyouts += 1
             if outcome == "bought":
                 self.cars_bought += 1
                 loop_s = self.clock() - t0
-                self._status(f"Bought {self.cars_bought} car(s)")
+                self._status(f"已买到 {self.cars_bought} 辆车")
                 if self.on_purchase:
                     self.on_purchase(loop_s, self.cars_bought)
             self._emit_stats()
             self.sleeper(self.cfg.loop_pace_s)
-        self._status("Stopped")
+        self._status("已停止")
         return "stopped"
+
+
+if __name__ == "__main__":
+    print("Loaded FH6 sniper core module. Start the app with: python -m fh6_sniper.main")
