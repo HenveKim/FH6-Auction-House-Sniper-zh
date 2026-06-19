@@ -132,6 +132,13 @@ _RESULTS_PRIORITY = ("auction_details.png", "no_auctions.png")
 
 _MATCH_SCALE = 0.5
 
+# Player Options appears when a listing is sold before we can buy it. Missing
+# this screen costs a full recovery timeout, so give only this template a
+# slightly lower acceptance threshold.
+TEMPLATE_MIN_THRESHOLDS = {
+    "player_options.png": 0.70,
+}
+
 
 def _downscale(img: np.ndarray) -> np.ndarray:
     return cv2.resize(img, None, fx=_MATCH_SCALE, fy=_MATCH_SCALE,
@@ -145,7 +152,7 @@ TEMPLATE_REGIONS = {
     "no_auctions.png":        (1113, 434, 1706, 690),
     "auction_loading.png":    (870, 180, 1840, 870),
     "auction_options.png":    (546, 276, 1374, 526),
-    "player_options.png":     (580, 230, 1340, 486),
+    "player_options.png":     (420, 180, 1500, 650),
     "buy_out.png":               (520, 470, 1400, 620),
     "buy_out_bgoff.png":         (520, 470, 1400, 620),
     "buy_out_progress.png":      (520, 470, 1400, 620),
@@ -199,9 +206,10 @@ def identify_screen(scene_bgr, templates: dict, threshold: float,
     for name in _RESULTS_PRIORITY:
         if scores.get(name, 0.0) >= threshold:
             return TEMPLATE_SCREENS[name]
-    best_screen, best_score = Screen.UNKNOWN, threshold
+    best_screen, best_score = Screen.UNKNOWN, 0.0
     for name, score in scores.items():
-        if score >= best_score:
+        required = TEMPLATE_MIN_THRESHOLDS.get(name, threshold)
+        if score >= required and score >= best_score:
             best_screen, best_score = TEMPLATE_SCREENS[name], score
     return best_screen
 

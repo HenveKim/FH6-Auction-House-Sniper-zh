@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+import win32api
 import win32gui
 import win32con
 from pynput.keyboard import Key, Controller
@@ -36,6 +37,8 @@ VK_CODES = {
     "y": 0x59,
 }
 
+_EXTENDED_KEYS = {"up", "down"}
+
 
 def _rand_seconds(ms_range) -> float:
     return random.uniform(ms_range[0], ms_range[1]) / 1000.0
@@ -67,9 +70,22 @@ def press_key_vk(name, key_hold_ms, between_keys_ms,
     if not hwnd:
         return
     vk_code = VK_CODES[name]
-    win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, vk_code, 0)
+    scan_code = win32api.MapVirtualKey(vk_code, 0)
+    lparam_down = 1 | (scan_code << 16)
+    lparam_up = lparam_down | (1 << 30) | (1 << 31)
+    if name in _EXTENDED_KEYS:
+        lparam_down |= 1 << 24
+        lparam_up |= 1 << 24
+    try:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, vk_code, lparam_down)
+    except Exception as exc:
+        log.warning("failed to post keydown to %r: %s", window_title, exc)
+        return
     sleep(_rand_seconds(key_hold_ms))
-    win32gui.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, 0)
+    try:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYUP, vk_code, lparam_up)
+    except Exception as exc:
+        log.warning("failed to post keyup to %r: %s", window_title, exc)
     sleep(_rand_seconds(between_keys_ms))
 
 

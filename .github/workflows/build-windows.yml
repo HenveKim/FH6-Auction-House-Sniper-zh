@@ -1,0 +1,45 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: PyInstaller onedir
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path .\dist\FH6-Sniper\FH6-Sniper.exe
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          Get-Content .\dist\FH6-Sniper\logs\self-test.log
+          if ($p.ExitCode -ne 0) {
+            exit $p.ExitCode
+          }
+
+      - name: Upload candidate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FH6-Sniper-windows-${{ github.sha }}
+          path: dist/FH6-Sniper/**
+          if-no-files-found: error
+          retention-days: 14

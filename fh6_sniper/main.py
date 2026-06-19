@@ -6,6 +6,65 @@ import sys
 import threading
 from dataclasses import asdict
 from pathlib import Path
+
+
+def _app_dir_for_self_test() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _run_self_test() -> int:
+    """Validate a source or frozen build without starting the GUI."""
+    import importlib
+    import traceback
+
+    app_dir = _app_dir_for_self_test()
+    log_dir = app_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "self-test.log"
+    lines = ["FH6 Sniper self-test"]
+    ok = True
+
+    def check(name, fn):
+        nonlocal ok
+        try:
+            detail = fn()
+            lines.append(f"OK {name}: {detail or ''}".rstrip())
+        except Exception as exc:
+            ok = False
+            lines.append(f"FAIL {name}: {exc}")
+            lines.append(traceback.format_exc().rstrip())
+
+    for module in (
+            "cv2", "numpy", "mss", "bettercam", "pynput", "win32gui",
+            "win32api", "windows_capture"):
+        check(f"import {module}", lambda m=module: importlib.import_module(m))
+
+    def _tk_check():
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        root.update_idletasks()
+        root.destroy()
+        return f"Tk {tk.TkVersion}"
+
+    check("tkinter", _tk_check)
+
+    def _templates_check():
+        from fh6_sniper import vision
+        templates = vision.load_templates(app_dir / "templates")
+        return f"{len(templates)} templates"
+
+    check("templates", _templates_check)
+
+    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return 0 if ok else 1
+
+
+if "--self-test" in sys.argv:
+    raise SystemExit(_run_self_test())
+
 from pynput import keyboard
 
 if __package__ in (None, ""):
@@ -105,7 +164,11 @@ def main() -> None:
     def start():
         if state["thread"] and state["thread"].is_alive():
             return
-        capture.focus_window(cfg.window_title)
+        if cfg.win32_api_input:
+            logging.getLogger("fh6.main").info(
+                "background input enabled; leaving FH6 focus unchanged")
+        else:
+            capture.focus_window(cfg.window_title)
         capture.reset_normalize_plan()             # detect crop afresh each run
         state["last_bot_stats"] = (0, 0, 0)        # new Sniper, fresh deltas
         sniper = Sniper(io, cfg, on_purchase=on_purchase,
@@ -153,6 +216,7 @@ def main() -> None:
         prev_start = cfg.hotkey_start_stop
         prev_panic = cfg.hotkey_panic
         prev_capturable = getattr(cfg, "overlay_capturable", False)
+        prev_window_capture = getattr(cfg, "window_content_capture", False)
         diffs = []
         for key, value in values.items():
             old = getattr(cfg, key, None)
@@ -164,6 +228,10 @@ def main() -> None:
         if cfg.overlay_capturable != prev_capturable:
             overlay.set_capturable(cfg.overlay_capturable)
             log.info("overlay capturable -> %s", cfg.overlay_capturable)
+        if cfg.window_content_capture != prev_window_capture:
+            capture.reset_normalize_plan()
+            log.info("background window capture -> %s",
+                     cfg.window_content_capture)
         try:
             save_config(cfg, paths.app_dir() / "config.json")
         except Exception as exc:

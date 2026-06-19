@@ -1,6 +1,7 @@
 """Screen capture and window-focus helpers."""
 from __future__ import annotations
 import logging
+import threading
 import time
 import numpy as np
 import cv2
@@ -14,6 +15,10 @@ CANON = (1920, 1080)
 _camera = None
 _camera_unavailable = False
 _hwnd_cache: dict = {}
+_window_capture_sessions: dict[int, "_WindowCaptureSession"] = {}
+_window_capture_lock = threading.Lock()
+_window_capture_unavailable = False
+_window_capture_logged: set[str] = set()
 
 
 def find_window(title: str) -> int:
@@ -77,6 +82,126 @@ def _grab_mss(region):
             area = sct.monitors[1]
         shot = sct.grab(area)
         return np.ascontiguousarray(np.array(shot)[:, :, :3])
+
+
+def _log_window_capture_once(key: str, level: int, msg: str, *args) -> None:
+    if key in _window_capture_logged:
+        return
+    _window_capture_logged.add(key)
+    _log.log(level, msg, *args)
+
+
+class _WindowCaptureSession:
+    """Small wrapper around windows-capture's callback-style API."""
+
+    def __init__(self, hwnd: int):
+        self.hwnd = hwnd
+        self.latest: np.ndarray | None = None
+        self.closed = False
+        self.control = None
+        self._lock = threading.Lock()
+        self._start()
+
+    def _start(self) -> None:
+        from windows_capture import WindowsCapture
+
+        cap = WindowsCapture(
+            window_hwnd=self.hwnd,
+            cursor_capture=False,
+            draw_border=False,
+            minimum_update_interval=16)
+
+        @cap.event
+        def on_frame_arrived(frame, _control):
+            try:
+                bgr = frame.convert_to_bgr().frame_buffer
+                bgr = np.ascontiguousarray(bgr)
+                with self._lock:
+                    self.latest = bgr
+            except Exception as exc:
+                _log_window_capture_once(
+                    f"frame-{self.hwnd}", logging.DEBUG,
+                    "background window frame conversion failed: %s", exc)
+
+        @cap.event
+        def on_closed():
+            self.closed = True
+
+        self.control = cap.start_free_threaded()
+
+    def get_frame(self, wait_s: float = 0.18) -> np.ndarray | None:
+        deadline = time.monotonic() + wait_s
+        while time.monotonic() <= deadline:
+            if self.closed:
+                return None
+            try:
+                if self.control is not None and self.control.is_finished():
+                    self.closed = True
+                    return None
+            except Exception:
+                self.closed = True
+                return None
+            with self._lock:
+                frame = self.latest
+            if frame is not None:
+                return frame
+            time.sleep(0.01)
+        return None
+
+    def stop(self) -> None:
+        try:
+            if self.control is not None:
+                self.control.stop()
+        except Exception:
+            pass
+        self.closed = True
+
+
+def _grab_window_content(hwnd: int) -> np.ndarray | None:
+    """Try Windows Graphics Capture for an hwnd. Returns raw BGR or None."""
+    global _window_capture_unavailable
+    if _window_capture_unavailable:
+        return None
+    if not hwnd or not win32gui.IsWindow(hwnd):
+        return None
+    if win32gui.IsIconic(hwnd):
+        _log_window_capture_once(
+            f"minimized-{hwnd}", logging.INFO,
+            "background window capture skipped: FH6 is minimized")
+        return None
+
+    try:
+        with _window_capture_lock:
+            session = _window_capture_sessions.get(hwnd)
+            if session is None or session.closed:
+                session = _WindowCaptureSession(hwnd)
+                _window_capture_sessions[hwnd] = session
+                _log.info("background window capture started (hwnd=%s)", hwnd)
+        frame = session.get_frame()
+    except ImportError as exc:
+        _window_capture_unavailable = True
+        _log_window_capture_once(
+            "import", logging.WARNING,
+            "background window capture unavailable: %s", exc)
+        return None
+    except Exception as exc:
+        _log_window_capture_once(
+            f"start-{hwnd}", logging.WARNING,
+            "background window capture failed; falling back to screen region: %s",
+            exc)
+        return None
+
+    if frame is None or frame.size == 0:
+        _log_window_capture_once(
+            f"empty-{hwnd}", logging.INFO,
+            "background window capture has no frame yet; using screen region")
+        return None
+    if frame.max() < _BLACK_THRESHOLD:
+        _log_window_capture_once(
+            f"blank-{hwnd}", logging.INFO,
+            "background window capture returned a blank frame; using screen region")
+        return None
+    return frame
 
 
 _capture_failing = False
@@ -217,14 +342,23 @@ def normalize_frame(frame: np.ndarray) -> np.ndarray:
     return frame
 
 
-def grab_screen(window_title: str | None = None) -> np.ndarray:
+def grab_screen(window_title: str | None = None,
+                use_window_capture: bool = False) -> np.ndarray:
     """Capture a BGR 1920x1080 frame. Falls back to mss on DXGI failure;
     returns a blank frame if both backends fail."""
     global _capture_failing
     region = None
+    hwnd = 0
     if window_title:
         hwnd = find_window(window_title)
         if hwnd:
+            if use_window_capture:
+                frame = _grab_window_content(hwnd)
+                if frame is not None:
+                    if _capture_failing:
+                        _log.info("capture recovered")
+                        _capture_failing = False
+                    return normalize_frame(frame)
             x, y, w, h = client_rect(hwnd)
             if w > 0 and h > 0:
                 region = (x, y, x + w, y + h)

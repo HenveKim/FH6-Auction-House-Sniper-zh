@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    name: Python checks
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile package
+        run: python -m compileall -q fh6_sniper
+
+      - name: Smoke tests
+        shell: pwsh
+        run: |
+          @'
+          import cv2
+          import numpy as np
+
+          from fh6_sniper import vision
+          from fh6_sniper.config import Config
+          from fh6_sniper.overlay import _SETTINGS_FIELDS
+          from fh6_sniper.sniper import Sniper
+          from fh6_sniper.vision import Screen
+
+
+          templates = vision.load_templates("templates")
+
+          frame = np.full((1080, 1920, 3), 127, dtype=np.uint8)
+          player = cv2.imread("templates/player_options.png")
+          assert player is not None
+          y, x = 250, 650
+          frame[y:y + player.shape[0], x:x + player.shape[1]] = player
+          assert vision.identify_screen(
+              frame, templates, 0.80,
+              targets={Screen.PLAYER_OPTIONS}) == Screen.PLAYER_OPTIONS
+
+          auction_frame = np.full((1080, 1920, 3), 127, dtype=np.uint8)
+          auction = cv2.imread("templates/auction_options.png")
+          assert auction is not None
+          y, x = 300, 620
+          auction_frame[y:y + auction.shape[0], x:x + auction.shape[1]] = auction
+          assert vision.identify_screen(
+              auction_frame, templates, 0.80,
+              targets={Screen.PLAYER_OPTIONS}) != Screen.PLAYER_OPTIONS
+
+          class FakeIO:
+              def __init__(self):
+                  self.screens = [
+                      Screen.PLAYER_OPTIONS,
+                      Screen.PLAYER_OPTIONS,
+                      Screen.AH_LANDING,
+                  ]
+                  self.pressed = []
+
+              def screen(self, targets=None):
+                  return self.screens.pop(0) if self.screens else Screen.AH_LANDING
+
+              def focused(self):
+                  return True
+
+              def press(self, name, times=1):
+                  self.pressed.extend([name] * times)
+
+          io = FakeIO()
+          bot = Sniper(io, Config(), sleeper=lambda _seconds: None)
+          assert bot._recover() == "no_cars"
+          assert io.pressed == ["esc"], io.pressed
+
+          fields = {(group, key, label) for group, key, label, _kind, _opts
+                    in _SETTINGS_FIELDS}
+          assert ("后台模式", "win32_api_input", "后台按键模式（窗口需可见）") in fields
+          assert ("后台模式", "window_content_capture",
+                  "实验性后台窗口捕获（遮挡识别）") in fields
+          assert any(group == "常用" and key == "overlay_capturable"
+                     for group, key, _label in fields)
+
+          print("smoke tests ok")
+          '@ | python -

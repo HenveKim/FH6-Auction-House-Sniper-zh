@@ -35,7 +35,8 @@ _SETTINGS_FIELDS = (
     ("常用",     "notify_toast",           "成功时显示 Windows 通知", "bool", None),
     ("常用",     "hdr_mode",               "HDR 模式（扩大绿色识别范围）", "bool", None),
     ("常用",     "overlay_capturable",     "允许截图/录制捕获悬浮窗", "bool", None),
-    ("常用",     "win32_api_input",        "Win32 API 输入（后台按键）", "bool", None),
+    ("后台模式", "win32_api_input",        "后台按键模式（窗口需可见）", "bool", None),
+    ("后台模式", "window_content_capture", "实验性后台窗口捕获（遮挡识别）", "bool", None),
     ("蹲守行为", "match_threshold",        "匹配阈值", "slider", (0.50, 1.00, 0.01)),
     ("蹲守行为", "loop_pace_s",            "循环间隔（秒）", "float",  None),
     ("蹲守行为", "buyout_select_delay_ms", "买断选择延迟（毫秒）", "int",  None),
@@ -239,6 +240,9 @@ class Overlay:
             if group == "常用":
                 self._build_feedback_section(
                     self._settings_interior, group, buckets[group])
+            elif group == "后台模式":
+                self._build_open_section(
+                    self._settings_interior, group, buckets[group])
             else:
                 self._build_collapsible_section(
                     self._settings_interior, group, buckets[group])
@@ -289,6 +293,20 @@ class Overlay:
             self._make_check_widget(cell, key, label)
         grid.grid_columnconfigure(0, weight=1, uniform="fb")
         grid.grid_columnconfigure(1, weight=1, uniform="fb")
+
+    def _build_open_section(self, parent, group, fields):
+        self._build_section_header(parent, group, with_chevron=False)
+        content = tk.Frame(parent, bg=_BG)
+        content.pack(fill="x", padx=18, pady=(4, 0))
+        for key, label, kind, opts in fields:
+            if kind == "slider":
+                self._build_slider(content, key, label, *opts)
+            elif kind == "bool":
+                row = tk.Frame(content, bg=_BG)
+                row.pack(fill="x", pady=3)
+                self._make_check_widget(row, key, label, wraplength=248)
+            else:
+                self._build_entry(content, key, label, kind)
 
     def _build_collapsible_section(self, parent, group, fields):
         section = tk.Frame(parent, bg=_BG)
@@ -394,7 +412,7 @@ class Overlay:
         self._field_widgets[key] = entry
         var._kind = kind        # tag for parsing on save
 
-    def _make_check_widget(self, parent, key, label):
+    def _make_check_widget(self, parent, key, label, wraplength=120):
         """Build a checkbox into parent. Caller is responsible for placement."""
         var = tk.BooleanVar(value=False)
         box = tk.Frame(parent, width=16, height=16, bg=_BG,
@@ -404,7 +422,7 @@ class Overlay:
         box.pack(side="right", padx=(6, 2))
         text = tk.Label(parent, text=label.upper(), bg=_BG, fg=_TEXT,
                         font=("Segoe UI", 8), anchor="w", cursor="hand2",
-                        wraplength=120, justify="left")
+                        wraplength=wraplength, justify="left")
         text.pack(side="left", fill="x", expand=True)
 
         def _toggle(_e=None):

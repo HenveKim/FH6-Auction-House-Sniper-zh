@@ -56,6 +56,11 @@ class Config:
     # against its own HUD. Set True if you want to screenshot or stream the
     # overlay.
     overlay_capturable: bool = False
+    # Experimental background window capture backend. When enabled, the bot
+    # first tries to read FH6 content by hwnd so a visible window can still be
+    # detected while another window covers it. Minimized windows are not
+    # guaranteed to produce frames.
+    window_content_capture: bool = False
     # paths
     log_path: str = "logs/purchases.csv"
     template_dir: str = "templates"

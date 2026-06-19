@@ -7,9 +7,11 @@ env/
 build/
 dist/
 *.spec
+!FH6-Sniper.spec
 *.egg-info/
 .idea/
 .vscode/
+.venv-build/
 logs/
 Thumbs.db
 .DS_Store
@@ -19,6 +21,7 @@ screenshots/
 tools/
 config.json
 build.ps1
+!build.ps1
 run.py
 rm-Screenshots/
 icon.ico

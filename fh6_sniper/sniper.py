@@ -18,6 +18,10 @@ else:
 
 log = logging.getLogger("fh6.sniper")
 
+UNRECOGNIZED_GAME_HINT = (
+    "已停止：未识别游戏画面，请检查 English US、16:9 无黑边、UI 100 或窗口遮挡"
+)
+
 
 def _names(screens) -> str:
     return "{" + ", ".join(sorted(s.name for s in screens)) + "}"
@@ -31,6 +35,12 @@ class GameIO:
         self.templates = templates
         self._last_screen = None
 
+    def _frame(self):
+        return capture.grab_screen(
+            self.cfg.window_title,
+            use_window_capture=getattr(
+                self.cfg, "window_content_capture", False))
+
     def screen(self, targets=None) -> Screen:
         """Identify the current screen. If `targets` is a set of Screen,
         only those (plus the priority results templates and the last-known
@@ -38,7 +48,7 @@ class GameIO:
         if (targets is not None and self._last_screen is not None
                 and self._last_screen != Screen.UNKNOWN):
             targets = targets | {self._last_screen}
-        frame = capture.grab_screen(self.cfg.window_title)
+        frame = self._frame()
         result = vision.identify_screen(
             frame, self.templates, self.cfg.match_threshold, targets=targets)
         if result != self._last_screen:
@@ -50,21 +60,21 @@ class GameIO:
         return capture.is_game_focused(self.cfg.window_title)
 
     def confirm_highlighted(self) -> bool:
-        frame = capture.grab_screen(self.cfg.window_title)
+        frame = self._frame()
         lo, hi = self.cfg.effective_lime_bounds()
         return vision.is_confirm_highlighted(frame, lo, hi)
 
     def card_sold(self) -> bool:
-        frame = capture.grab_screen(self.cfg.window_title)
+        frame = self._frame()
         return vision.is_card_sold(frame)
 
     def first_buyable_slot(self) -> int:
-        frame = capture.grab_screen(self.cfg.window_title)
+        frame = self._frame()
         return vision.first_buyable_slot(frame)
 
     def slot_states(self) -> tuple:
         """Per-slot (sold, populated) flags. Used by the render-wait gate."""
-        frame = capture.grab_screen(self.cfg.window_title)
+        frame = self._frame()
         return vision.slot_states(frame)
 
     def press(self, name: str, times: int = 1) -> None:
@@ -98,9 +108,9 @@ class Sniper:
         # reload templates, retry once, and never auto-toggle again this
         # session even if the second attempt also fails.
         self._auto_bg_toggled = False
-        # True once we have identified ANY known screen this session.
-        # A recover_failed while still False usually means the game
-        # language isn't English (templates only match the English UI).
+        # True once we have identified ANY known screen this session. If a
+        # recover_failed happens while still False, the frame may be in the
+        # wrong language, wrong aspect/UI scale, covered, or not capturable.
         self._oriented = False
 
     def request_stop(self) -> None:
@@ -191,7 +201,9 @@ class Sniper:
         except Exception:
             log.exception("auto-toggle: failed to load alternate templates")
             return False
-        frame = capture.grab_screen(cfg.window_title)
+        frame = capture.grab_screen(
+            cfg.window_title,
+            use_window_capture=getattr(cfg, "window_content_capture", False))
         result = vision.identify_screen(
             frame, candidate, cfg.match_threshold,
             targets={Screen.BUY_OUT, Screen.PLAYER_OPTIONS})
@@ -277,7 +289,7 @@ class Sniper:
         if self._oriented:
             self._status("已停止：请在拍卖行内启动")
         else:
-            self._status("已停止：请将游戏语言设为 English US")
+            self._status(UNRECOGNIZED_GAME_HINT)
         return False
 
     def _enter_search_from_landing(self, known=None) -> bool:
@@ -332,6 +344,8 @@ class Sniper:
         for _ in range(10):
             if self._stop:
                 return "recover_failed"
+            if s == Screen.PLAYER_OPTIONS:
+                return self._skip_player_options()
             if s in (Screen.SEARCH_CONFIG, Screen.AH_LANDING):
                 return "recovered"
             if s == Screen.UNKNOWN:
@@ -349,6 +363,10 @@ class Sniper:
             s = self._await_settle(prev=s)
         log.info("recover: gave up")
         return "recover_failed"
+
+    def _skip_player_options(self) -> str:
+        log.info("player options detected; treating listing as sold")
+        return self._escape_player_options()
 
     def _await_settle(self, prev, timeout: float = 1.2):
         """Poll until the screen settles to a recognised state other than
@@ -508,7 +526,7 @@ class Sniper:
             "y", Screen.RESULTS_HAS_CARS,
             {Screen.AUCTION_OPTIONS, Screen.PLAYER_OPTIONS})
         if seen == Screen.PLAYER_OPTIONS:
-            return self._escape_player_options()
+            return self._skip_player_options()
         if seen is None:
             return self._recover()
 
@@ -525,12 +543,15 @@ class Sniper:
         seen = self.wait_for(
             {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
         if seen == Screen.PLAYER_OPTIONS:
-            return self._escape_player_options()
+            return self._skip_player_options()
+        if seen is None and self.io.screen(
+                targets={Screen.PLAYER_OPTIONS}) == Screen.PLAYER_OPTIONS:
+            return self._skip_player_options()
         if seen is None and self._try_toggle_moving_background():
             seen = self.wait_for(
                 {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
             if seen == Screen.PLAYER_OPTIONS:
-                return self._escape_player_options()
+                return self._skip_player_options()
         if seen is None:
             return self._recover()
 
@@ -582,7 +603,7 @@ class Sniper:
                 if self._oriented:
                     self._status("已停止：无法恢复")
                 else:
-                    self._status("已停止：请将游戏语言设为 English US")
+                    self._status(UNRECOGNIZED_GAME_HINT)
                 return "recover_failed"
             if outcome == "failed":
                 self.failed_buyouts += 1
