@@ -7,7 +7,7 @@ env/
 build/
 dist/
 *.spec
-!FH6-Sniper.spec
+!packaging/FH6-Sniper.spec
 *.egg-info/
 .idea/
 .vscode/
@@ -20,8 +20,6 @@ conftest.py
 screenshots/
 tools/
 config.json
-build.ps1
-!build.ps1
 run.py
 rm-Screenshots/
 icon.ico

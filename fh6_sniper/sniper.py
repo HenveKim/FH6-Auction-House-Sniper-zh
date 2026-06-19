@@ -196,7 +196,7 @@ class Sniper:
         new_value = not cfg.moving_background
         try:
             candidate = vision.load_templates(
-                paths.app_dir() / cfg.template_dir,
+                paths.resource_dir() / cfg.template_dir,
                 moving_background=new_value)
         except Exception:
             log.exception("auto-toggle: failed to load alternate templates")

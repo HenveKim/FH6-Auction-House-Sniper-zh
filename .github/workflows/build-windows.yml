@@ -18,23 +18,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-build.txt
+          cache-dependency-path: requirements.txt
 
-      - name: Build
+      - name: Build and smoke-test packaged executable
         shell: pwsh
-        run: .\build.ps1
-
-      - name: Smoke-test packaged executable
-        shell: pwsh
-        run: |
-          $exe = Resolve-Path .\dist\FH6-Sniper\FH6-Sniper.exe
-          $p = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
-          Get-Content .\dist\FH6-Sniper\logs\self-test.log
-          if ($p.ExitCode -ne 0) {
-            exit $p.ExitCode
-          }
+        run: .\scripts\build.ps1
 
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4

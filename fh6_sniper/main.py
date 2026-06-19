@@ -14,12 +14,19 @@ def _app_dir_for_self_test() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _resource_dir_for_self_test() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    return Path(__file__).resolve().parent.parent
+
+
 def _run_self_test() -> int:
     """Validate a source or frozen build without starting the GUI."""
     import importlib
     import traceback
 
     app_dir = _app_dir_for_self_test()
+    resource_dir = _resource_dir_for_self_test()
     log_dir = app_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "self-test.log"
@@ -53,7 +60,7 @@ def _run_self_test() -> int:
 
     def _templates_check():
         from fh6_sniper import vision
-        templates = vision.load_templates(app_dir / "templates")
+        templates = vision.load_templates(resource_dir / "templates")
         return f"{len(templates)} templates"
 
     check("templates", _templates_check)
@@ -130,7 +137,7 @@ def main() -> None:
     cfg = load_config(paths.app_dir() / "config.json")
     _log_config(cfg)
     templates = vision.load_templates(
-        paths.app_dir() / cfg.template_dir,
+        paths.resource_dir() / cfg.template_dir,
         moving_background=cfg.moving_background)
     io = GameIO(cfg, templates)
     overlay = Overlay(
@@ -240,7 +247,7 @@ def main() -> None:
         if cfg.moving_background != prev_bg:
             try:
                 io.templates = vision.load_templates(
-                    paths.app_dir() / cfg.template_dir,
+                    paths.resource_dir() / cfg.template_dir,
                     moving_background=cfg.moving_background)
                 log.info("templates reloaded (moving_background=%s)",
                          cfg.moving_background)

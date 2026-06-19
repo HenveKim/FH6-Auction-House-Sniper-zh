@@ -15,7 +15,7 @@
 - 修复车辆已被买走后误入 Player Options 时恢复不稳定的问题。现在会更积极识别 Player Options，并将其视为车辆已售出后跳过，不再错误触发动态背景自动切换。
 
 ### 打包准备
-- 新增 PyInstaller onedir 打包配置和构建脚本，便于生成候选 exe 供测试。
+- 新增 PyInstaller onedir 打包配置和 `scripts/build.ps1` 构建脚本，便于生成候选 exe 供测试。
 - 新增 GitHub Actions 检查 workflow 和手动 Windows exe 候选构建 workflow。
 - 构建流程新增源码与 exe 自检，用于验证 Tkinter、关键依赖和模板加载。
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 
-project_root = Path(SPECPATH)
+project_root = Path(SPECPATH).parent
 python_root = Path(sys.base_prefix)
 
 datas = [(str(project_root / "templates"), "templates")]
@@ -20,7 +20,7 @@ for name in ("_tkinter.pyd", "tcl86t.dll", "tk86t.dll"):
 
 
 a = Analysis(
-    ["fh6_sniper/main.py"],
+    [str(project_root / "fh6_sniper" / "main.py")],
     pathex=[str(project_root)],
     binaries=binaries,
     datas=datas,
@@ -34,7 +34,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=["pyinstaller_tk_runtime.py"],
+    runtime_hooks=[str(project_root / "packaging" / "pyinstaller_tk_runtime.py")],
     excludes=[],
     noarchive=False,
     optimize=0,

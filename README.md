@@ -90,18 +90,20 @@
 安装依赖后可使用 PyInstaller onedir 方式生成候选 exe：
 
 ```powershell
-.\build.ps1
+.\scripts\build.ps1
 ```
 
 构建产物位于 `dist\FH6-Sniper\FH6-Sniper.exe`。正式发布前请先完成游戏内手动测试。
 
-构建脚本会自动运行源码和 exe 自检。如果本地 Python 的 Tkinter/Tcl 安装不完整，请换用带 Tkinter 的官方 Python，或指定解释器：
+构建脚本会自动运行 exe 自检。如果本地 Python 的 Tkinter/Tcl 安装不完整，请换用带 Tkinter 的官方 Python，或指定解释器：
 
 ```powershell
-.\build.ps1 -PythonExe "C:\Path\To\python.exe" -RecreateVenv
+.\scripts\build.ps1 -PythonExe "C:\Path\To\python.exe" -RecreateVenv
 ```
 
 也可以在 GitHub Actions 中手动运行 **Build Windows EXE** workflow，生成可下载的候选构建产物。
+
+如需在打包前额外运行源码自检，可加上 `-SourceSelfTest`；常规 CI 会自动执行源码编译和轻量烟雾测试。
 
 ***
 
