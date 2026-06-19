@@ -33,7 +33,7 @@ if (-not (Test-Path $Python)) {
 }
 
 Invoke-Native { & $Python -m pip install --upgrade pip }
-Invoke-Native { & $Python -m pip install -r requirements.txt }
+Invoke-Native { & $Python -m pip install -r requirements.md }
 
 if ($SourceSelfTest) {
     Invoke-Native { & $Python -m fh6_sniper.main --self-test }
