@@ -11,6 +11,7 @@ _LIME     = "#c6f000"
 _TEXT     = "#f4f4f6"
 _DIM      = "#83858f"
 _FAINT    = "#5c5e68"
+_SCROLL   = "#6d707a"
 _AMBER    = "#f0a83c"
 _RED      = "#e2685f"
 _STOP     = "#e0524b"
@@ -99,6 +100,7 @@ class Overlay:
         self._settings_interior = None
         self._settings_scrollbar = None
         self._log_text = None
+        self._log_scroll_canvas = None
         self._log_count = 0
         self._max_log_entries = 200
 
@@ -212,16 +214,25 @@ class Overlay:
         log_wrap = tk.Frame(frame, bg=_CARD, highlightthickness=1,
                             highlightbackground=_DIVIDER)
         log_wrap.pack(fill="both", expand=True, padx=18, pady=(8, 0))
-        log_scroll = tk.Scrollbar(log_wrap, orient="vertical")
-        log_scroll.pack(side="right", fill="y")
         self._log_text = tk.Text(
             log_wrap, height=13, wrap="word", bg=_CARD, fg=_TEXT,
             insertbackground=_TEXT, relief="flat", bd=0,
             highlightthickness=0, font=("Consolas", 9),
-            padx=8, pady=8, state="disabled",
-            yscrollcommand=log_scroll.set)
+            padx=9, pady=9, state="disabled",
+            yscrollcommand=self._update_log_scrollbar,
+            selectbackground=_DIVIDER, selectforeground=_TEXT)
         self._log_text.pack(side="left", fill="both", expand=True)
-        log_scroll.configure(command=self._log_text.yview)
+        self._log_scroll_canvas = tk.Canvas(
+            log_wrap, width=8, bg=_CARD, highlightthickness=0,
+            bd=0, cursor="hand2")
+        self._log_scroll_canvas.pack(side="right", fill="y",
+                                     padx=(0, 4), pady=6)
+        self._log_scroll_canvas.bind("<Button-1>", self._jump_log_scroll)
+        self._log_scroll_canvas.bind("<B1-Motion>", self._jump_log_scroll)
+        self._log_text.bind("<MouseWheel>", self._on_log_wheel)
+        self._log_text.bind(
+            "<Configure>",
+            lambda _e: self._update_log_scrollbar(*self._log_text.yview()))
         for level, color in _LOG_TAG_COLORS.items():
             self._log_text.tag_configure(level, foreground=color)
 
@@ -682,6 +693,49 @@ class Overlay:
         self._save_msg_after = self.root.after(
             2500, lambda: self._save_msg_var.set(""))
 
+    def _update_log_scrollbar(self, first=0.0, last=1.0):
+        if self._log_scroll_canvas is None:
+            return
+        try:
+            first, last = float(first), float(last)
+        except (TypeError, ValueError):
+            first, last = 0.0, 1.0
+        canvas = self._log_scroll_canvas
+        canvas.delete("all")
+        height = canvas.winfo_height()
+        if height <= 4:
+            return
+        pad = 2
+        x = 4
+        canvas.create_line(
+            x, pad, x, height - pad, fill=_DIVIDER, width=3,
+            capstyle="round")
+        if first <= 0.0 and last >= 1.0:
+            return
+        usable = max(1, height - pad * 2)
+        thumb_h = max(20, int((last - first) * usable))
+        y0 = pad + int(first * usable)
+        y1 = min(height - pad, y0 + thumb_h)
+        canvas.create_line(
+            x, y0, x, y1, fill=_SCROLL, width=4,
+            capstyle="round")
+
+    def _jump_log_scroll(self, event):
+        if self._log_text is None or self._log_scroll_canvas is None:
+            return "break"
+        height = max(1, self._log_scroll_canvas.winfo_height())
+        fraction = max(0.0, min(1.0, event.y / height))
+        self._log_text.yview_moveto(fraction)
+        self._update_log_scrollbar(*self._log_text.yview())
+        return "break"
+
+    def _on_log_wheel(self, event):
+        if self._log_text is None:
+            return "break"
+        self._log_text.yview_scroll(int(-event.delta / 120), "units")
+        self._update_log_scrollbar(*self._log_text.yview())
+        return "break"
+
     def _clear_log_view(self):
         if self._log_text is None:
             return
@@ -689,6 +743,7 @@ class Overlay:
         self._log_text.delete("1.0", "end")
         self._log_text.configure(state="disabled")
         self._log_count = 0
+        self._update_log_scrollbar(0.0, 1.0)
 
     def _append_log_line(self, level: str, message: str, created: float):
         if self._log_text is None:
@@ -704,6 +759,7 @@ class Overlay:
             self._log_text.delete("1.0", "2.0")
             self._log_count -= 1
         self._log_text.see("end")
+        self._update_log_scrollbar(*self._log_text.yview())
         self._log_text.configure(state="disabled")
 
     def add_log_record(self, record):

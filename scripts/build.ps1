@@ -21,6 +21,13 @@ function Invoke-Native {
     }
 }
 
+function Test-TkinterRuntime {
+    & $Python -c "import tkinter as tk; root=tk.Tk(); root.withdraw(); root.update_idletasks(); root.destroy(); print('tkinter runtime ok')"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Build Python cannot start Tkinter. Use a clean official Python with Tcl/Tk, then run: .\scripts\build.ps1 -PythonExe C:\Path\To\python.exe -RecreateVenv"
+    }
+}
+
 $Venv = Join-Path $Root ".venv-build"
 $Python = Join-Path $Venv "Scripts\python.exe"
 
@@ -34,6 +41,7 @@ if (-not (Test-Path $Python)) {
 
 Invoke-Native { & $Python -m pip install --upgrade pip }
 Invoke-Native { & $Python -m pip install -r requirements.md }
+Test-TkinterRuntime
 
 if ($SourceSelfTest) {
     Invoke-Native { & $Python -m fh6_sniper.main --self-test }
