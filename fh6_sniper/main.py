@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import logging
+import os
 import sys
 import threading
 from dataclasses import asdict
@@ -33,8 +34,15 @@ def _run_self_test() -> int:
     lines = ["FH6 Sniper self-test"]
     ok = True
 
+    def write_log():
+        log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    write_log()
+
     def check(name, fn):
         nonlocal ok
+        lines.append(f"RUN {name}")
+        write_log()
         try:
             detail = fn()
             lines.append(f"OK {name}: {detail or ''}".rstrip())
@@ -42,6 +50,7 @@ def _run_self_test() -> int:
             ok = False
             lines.append(f"FAIL {name}: {exc}")
             lines.append(traceback.format_exc().rstrip())
+        write_log()
 
     for module in (
             "cv2", "numpy", "mss", "bettercam", "pynput", "win32gui",
@@ -69,19 +78,34 @@ def _run_self_test() -> int:
     return 0 if ok else 1
 
 
-if "--self-test" in sys.argv:
+def _self_test_requested() -> bool:
+    if "--self-test" in sys.argv:
+        return True
+    if os.environ.get("FH6_SNIPER_SELF_TEST") == "1":
+        return True
+    if getattr(sys, "frozen", False):
+        candidates = {Path(sys.executable).parent}
+        bundle_dir = getattr(sys, "_MEIPASS", None)
+        if bundle_dir:
+            candidates.add(Path(bundle_dir).parent)
+        return any((path / "self-test.request").exists()
+                   for path in candidates)
+    return False
+
+
+if _self_test_requested():
     raise SystemExit(_run_self_test())
 
 from pynput import keyboard
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from fh6_sniper import capture, notifier, paths, vision
+    from fh6_sniper import capture, events, notifier, paths, vision
     from fh6_sniper.config import load_config, save_config
     from fh6_sniper.overlay import Overlay
     from fh6_sniper.sniper import GameIO, Sniper
 else:
-    from . import capture, notifier, paths, vision
+    from . import capture, events, notifier, paths, vision
     from .config import load_config, save_config
     from .overlay import Overlay
     from .sniper import GameIO, Sniper
@@ -110,6 +134,20 @@ def _log_config(cfg) -> None:
     body = {k: list(v) if isinstance(v, tuple) else v for k, v in body.items()}
     logging.getLogger("fh6").info("config snapshot: %s",
                                    json.dumps(body, sort_keys=True))
+
+
+class OverlayEventHandler(logging.Handler):
+    """Send user-facing event records to the Tk overlay safely."""
+
+    def __init__(self, overlay):
+        super().__init__(level=logging.INFO)
+        self.overlay = overlay
+
+    def emit(self, record):
+        try:
+            self.overlay.add_log_record(record)
+        except Exception:
+            pass
 
 
 def _setup_logging():
@@ -142,6 +180,10 @@ def main() -> None:
     io = GameIO(cfg, templates)
     overlay = Overlay(
         hide_from_capture=not getattr(cfg, "overlay_capturable", False))
+    event_logger = logging.getLogger(events.LOGGER_NAME)
+    event_handler = OverlayEventHandler(overlay)
+    event_logger.addHandler(event_handler)
+    events.info("程序启动")
 
     state = {
         "sniper": None,
@@ -156,8 +198,14 @@ def main() -> None:
     purchase_log = paths.app_dir() / cfg.log_path
 
     def on_purchase(loop_seconds, total):
-        notifier.log_purchase(purchase_log, "bought", loop_seconds, total)
-        notifier.notify_success(total, cfg.notify_sound, cfg.notify_toast)
+        purchased_at = notifier.purchase_timestamp()
+        notifier.log_purchase(
+            purchase_log, "bought", loop_seconds, total, purchased_at)
+        notifier.notify_success(
+            total, cfg.notify_sound, cfg.notify_toast, purchased_at)
+        events.success(
+            "购车成功：第 %d 辆，时间 %s",
+            total, notifier.format_purchase_time(purchased_at))
 
     def on_stats(searches, bought, fails):
         last_s, last_b, last_f = state["last_bot_stats"]
@@ -171,6 +219,7 @@ def main() -> None:
     def start():
         if state["thread"] and state["thread"].is_alive():
             return
+        events.info("开始蹲守")
         if cfg.win32_api_input:
             logging.getLogger("fh6.main").info(
                 "background input enabled; leaving FH6 focus unchanged")
@@ -188,6 +237,7 @@ def main() -> None:
             except Exception:
                 logging.getLogger("fh6.main").exception(
                     "sniper thread crashed")
+                events.error("线程崩溃，请查看 sniper.log")
                 try:
                     overlay.set_status("崩溃：请查看 sniper.log")
                 except Exception:
@@ -199,6 +249,7 @@ def main() -> None:
 
     def stop():
         if state["sniper"]:
+            events.info("请求停止")
             state["sniper"].request_stop()
 
     def toggle():
@@ -243,7 +294,9 @@ def main() -> None:
             save_config(cfg, paths.app_dir() / "config.json")
         except Exception as exc:
             log.exception("save_config failed")
+            events.error("配置保存失败：%s", exc)
             return f"无法保存配置：{exc}"
+        events.info("设置已保存：%d 项变更", len(diffs))
         if cfg.moving_background != prev_bg:
             try:
                 io.templates = vision.load_templates(
@@ -274,10 +327,12 @@ def main() -> None:
     try:
         overlay.run()
     finally:
+        events.info("程序退出")
         stop()
         listener = hotkeys_ref["listener"]
         if listener is not None:
             listener.stop()
+        event_logger.removeHandler(event_handler)
 
 
 if __name__ == "__main__":

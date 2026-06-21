@@ -42,8 +42,30 @@ if ($SourceSelfTest) {
 Invoke-Native { & $Python -m PyInstaller --clean --noconfirm packaging\FH6-Sniper.spec }
 
 $Exe = Join-Path $Root "dist\FH6-Sniper\FH6-Sniper.exe"
-$Process = Start-Process -FilePath $Exe -ArgumentList "--self-test" -Wait -PassThru
-Get-Content (Join-Path $Root "dist\FH6-Sniper\logs\self-test.log")
+$ExeDir = Split-Path -Parent $Exe
+$SelfTestRequest = Join-Path $ExeDir "self-test.request"
+$SelfTestLog = Join-Path $ExeDir "logs\self-test.log"
+if (Test-Path $SelfTestLog) {
+    Remove-Item -LiteralPath $SelfTestLog -Force
+}
+Set-Content -LiteralPath $SelfTestRequest -Value "1" -Encoding ASCII
+$OldSelfTest = [Environment]::GetEnvironmentVariable(
+    "FH6_SNIPER_SELF_TEST", "Process")
+[Environment]::SetEnvironmentVariable("FH6_SNIPER_SELF_TEST", "1", "Process")
+try {
+    $Process = Start-Process -FilePath $Exe -ArgumentList "--self-test" -PassThru
+    if (-not $Process.WaitForExit(30000)) {
+        Stop-Process -Id $Process.Id -Force
+        throw "Packaged self-test timed out"
+    }
+} finally {
+    [Environment]::SetEnvironmentVariable(
+        "FH6_SNIPER_SELF_TEST", $OldSelfTest, "Process")
+    if (Test-Path $SelfTestRequest) {
+        Remove-Item -LiteralPath $SelfTestRequest -Force
+    }
+}
+Get-Content $SelfTestLog
 if ($Process.ExitCode -ne 0) {
     exit $Process.ExitCode
 }

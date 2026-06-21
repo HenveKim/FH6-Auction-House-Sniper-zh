@@ -8,11 +8,11 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from fh6_sniper import actions, capture, paths, vision
+    from fh6_sniper import actions, capture, events, paths, vision
     from fh6_sniper.config import save_config
     from fh6_sniper.vision import Screen
 else:
-    from . import actions, capture, paths, vision
+    from . import actions, capture, events, paths, vision
     from .config import save_config
     from .vision import Screen
 
@@ -223,6 +223,7 @@ class Sniper:
                  "(verified against frame; templates swapped, "
                  "saved to config.json)", new_value)
         self._status(f"已自动切换动态背景模式 -> {new_value}")
+        events.warning("已自动切换动态背景模式 -> %s", new_value)
         return True
 
     def wait_for(self, screens: set, timeout: float):
@@ -366,6 +367,7 @@ class Sniper:
 
     def _skip_player_options(self) -> str:
         log.info("player options detected; treating listing as sold")
+        events.info("车辆已售出，正在跳过")
         return self._escape_player_options()
 
     def _await_settle(self, prev, timeout: float = 1.2):
@@ -510,15 +512,18 @@ class Sniper:
         slot = self.io.first_buyable_slot()
         if slot == 0:
             self._status("列表均已售出，正在跳过")
+            events.info("列表均已售出，正在跳过")
             self._back_to_landing(known=result)
             return "no_cars"
 
         self._status("发现车辆，正在买断")
+        events.info("发现车辆，正在买断")
         for _ in range(slot - 1):
             self._press("down")
 
         if slot > 1 and self.io.first_buyable_slot() != slot:
             self._status("导航时车辆已售出，正在跳过")
+            events.info("导航时车辆已售出，正在跳过")
             self._back_to_landing(known=result)
             return "no_cars"
 
@@ -590,6 +595,7 @@ class Sniper:
         while not self._stop:
             if self._auto_stop_reached():
                 self._status("已自动停止：达到限制")
+                events.info("已自动停止：达到限制")
                 return "auto_stop"
             self._guard_focus()
             if self._stop:
@@ -600,6 +606,7 @@ class Sniper:
             self.searches += 1
             if outcome == "recover_failed":
                 self._emit_stats()
+                events.error("无法恢复，已停止")
                 if self._oriented:
                     self._status("已停止：无法恢复")
                 else:
@@ -607,6 +614,7 @@ class Sniper:
                 return "recover_failed"
             if outcome == "failed":
                 self.failed_buyouts += 1
+                events.warning("买断失败")
             if outcome == "bought":
                 self.cars_bought += 1
                 loop_s = self.clock() - t0
@@ -616,6 +624,7 @@ class Sniper:
             self._emit_stats()
             self.sleeper(self.cfg.loop_pace_s)
         self._status("已停止")
+        events.info("已停止")
         return "stopped"
 
 

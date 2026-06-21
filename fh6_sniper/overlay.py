@@ -24,7 +24,23 @@ _STOPPED_WORDS = (
 )
 _TAB_LABELS = {
     "STATUS": "状态",
+    "LOGS": "日志",
     "SETTINGS": "设置",
+}
+
+_LOG_LEVEL_LABELS = {
+    "INFO": "信息",
+    "SUCCESS": "成功",
+    "WARNING": "注意",
+    "ERROR": "错误",
+    "CRITICAL": "错误",
+}
+_LOG_TAG_COLORS = {
+    "INFO": _TEXT,
+    "SUCCESS": _LIME,
+    "WARNING": _AMBER,
+    "ERROR": _RED,
+    "CRITICAL": _RED,
 }
 
 _SETTINGS_FIELDS = (
@@ -82,6 +98,9 @@ class Overlay:
         self._settings_canvas = None
         self._settings_interior = None
         self._settings_scrollbar = None
+        self._log_text = None
+        self._log_count = 0
+        self._max_log_entries = 200
 
         self._build()
         self._show_tab("STATUS")
@@ -138,6 +157,7 @@ class Overlay:
         self._body = tk.Frame(root, bg=_BG)
         self._body.pack(fill="both", expand=True)
         self._build_status_tab(self._body)
+        self._build_log_tab(self._body)
         self._build_settings_tab(self._body)
 
         tk.Label(root, text="F8  开始 / 停止          F9  紧急停止",
@@ -146,7 +166,7 @@ class Overlay:
     def _build_tab_bar(self, root):
         bar = tk.Frame(root, bg=_BG)
         bar.pack(fill="x", padx=18, pady=(8, 0))
-        for tab in ("STATUS", "SETTINGS"):
+        for tab in ("STATUS", "LOGS", "SETTINGS"):
             cell = tk.Frame(bar, bg=_BG)
             cell.pack(side="left", expand=True, fill="x")
             lbl = tk.Label(cell, text=_TAB_LABELS[tab], bg=_BG, fg=_DIM,
@@ -180,6 +200,40 @@ class Overlay:
                        lambda _e: self._btn.config(bg=self._btn_base))
         self._set_button(running=False)
         self._tab_frames["STATUS"] = frame
+
+    def _build_log_tab(self, parent):
+        frame = tk.Frame(parent, bg=_BG)
+        tk.Label(
+            frame, text="只显示启动、购车、失败、跳过等关键事件",
+            bg=_BG, fg=_DIM, font=("Segoe UI", 8),
+            anchor="w", wraplength=300).pack(
+                fill="x", padx=18, pady=(12, 0))
+
+        log_wrap = tk.Frame(frame, bg=_CARD, highlightthickness=1,
+                            highlightbackground=_DIVIDER)
+        log_wrap.pack(fill="both", expand=True, padx=18, pady=(8, 0))
+        log_scroll = tk.Scrollbar(log_wrap, orient="vertical")
+        log_scroll.pack(side="right", fill="y")
+        self._log_text = tk.Text(
+            log_wrap, height=13, wrap="word", bg=_CARD, fg=_TEXT,
+            insertbackground=_TEXT, relief="flat", bd=0,
+            highlightthickness=0, font=("Consolas", 9),
+            padx=8, pady=8, state="disabled",
+            yscrollcommand=log_scroll.set)
+        self._log_text.pack(side="left", fill="both", expand=True)
+        log_scroll.configure(command=self._log_text.yview)
+        for level, color in _LOG_TAG_COLORS.items():
+            self._log_text.tag_configure(level, foreground=color)
+
+        clear = tk.Button(
+            frame, text="清空显示", font=("Segoe UI", 9, "bold"),
+            relief="flat", bd=0, highlightthickness=0, cursor="hand2",
+            bg=_CARD, fg=_TEXT, activebackground=_DIVIDER,
+            activeforeground=_TEXT, height=1, command=self._clear_log_view)
+        clear.pack(fill="x", padx=18, pady=(8, 0))
+        clear.bind("<Enter>", lambda _e: clear.config(bg=_DIVIDER))
+        clear.bind("<Leave>", lambda _e: clear.config(bg=_CARD))
+        self._tab_frames["LOGS"] = frame
 
     def _build_stats(self, parent):
         card = tk.Frame(parent, bg=_CARD)
@@ -627,6 +681,39 @@ class Overlay:
                 pass
         self._save_msg_after = self.root.after(
             2500, lambda: self._save_msg_var.set(""))
+
+    def _clear_log_view(self):
+        if self._log_text is None:
+            return
+        self._log_text.configure(state="normal")
+        self._log_text.delete("1.0", "end")
+        self._log_text.configure(state="disabled")
+        self._log_count = 0
+
+    def _append_log_line(self, level: str, message: str, created: float):
+        if self._log_text is None:
+            return
+        level = level if level in _LOG_LEVEL_LABELS else "INFO"
+        stamp = time.strftime("%H:%M:%S", time.localtime(created))
+        label = _LOG_LEVEL_LABELS[level]
+        line = f"[{stamp}] {label:<2}  {message}\n"
+        self._log_text.configure(state="normal")
+        self._log_text.insert("end", line, level)
+        self._log_count += 1
+        while self._log_count > self._max_log_entries:
+            self._log_text.delete("1.0", "2.0")
+            self._log_count -= 1
+        self._log_text.see("end")
+        self._log_text.configure(state="disabled")
+
+    def add_log_record(self, record):
+        """Thread-safe append for user-facing log records."""
+        try:
+            self.root.after(
+                0, self._append_log_line,
+                record.levelname, record.getMessage(), record.created)
+        except RuntimeError:
+            pass
 
     def set_status(self, text: str):
         """Thread-safe status update."""
