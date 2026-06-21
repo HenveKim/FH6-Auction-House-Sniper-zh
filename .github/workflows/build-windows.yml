@@ -2,6 +2,12 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -24,10 +30,43 @@ jobs:
         shell: pwsh
         run: .\scripts\build.ps1
 
+      - name: Package Windows build
+        shell: pwsh
+        run: |
+          $Version = "${{ github.ref_name }}"
+          if ("${{ github.ref_type }}" -ne "tag") {
+            $Version = "${{ github.sha }}"
+          }
+          $Zip = "dist/FH6-Sniper-$Version-windows.zip"
+          if (Test-Path $Zip) {
+            Remove-Item -LiteralPath $Zip -Force
+          }
+          Compress-Archive -Path dist/FH6-Sniper -DestinationPath $Zip -Force
+          Get-Item $Zip
+
       - name: Upload candidate artifact
         uses: actions/upload-artifact@v4
         with:
           name: FH6-Sniper-windows-${{ github.sha }}
-          path: dist/FH6-Sniper/**
+          path: |
+            dist/FH6-Sniper/**
+            dist/FH6-Sniper-*-windows.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: FH6 Sniper ${{ github.ref_name }}
+          files: dist/FH6-Sniper-${{ github.ref_name }}-windows.zip
+          body: |
+            FH6 Sniper ${{ github.ref_name }} Windows 候选构建。
+
+            使用说明：
+            - 下载并解压 `FH6-Sniper-${{ github.ref_name }}-windows.zip`。
+            - 运行 `FH6-Sniper/FH6-Sniper.exe`。
+            - 当前版本仍要求游戏语言为 `English US`。
+            - 后台模式、实验性窗口捕获和最小化限制请以 README 说明为准。
+
+            免责声明：本项目为非官方开源项目，与 Microsoft、Playground Games、Forza 无官方关联；自动化使用风险由使用者自行承担。

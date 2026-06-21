@@ -2,7 +2,7 @@
 
 最新变更在最前面。每个章节标题都是发布日期。
 
-## v1.3.0 - 2026-06-19
+## v1.3.0 - 2026-06-22
 
 ### 后台与窗口化候选版
 - 新增 **实验性后台窗口捕获（遮挡识别）**，可在 FH6 窗口被其他窗口遮挡时继续尝试读取游戏画面。
@@ -21,7 +21,7 @@
 
 ### 打包准备
 - 新增 PyInstaller onedir 打包配置和 `scripts/build.ps1` 构建脚本，便于生成候选 exe 供测试。
-- 新增 GitHub Actions 检查 workflow 和手动 Windows exe 候选构建 workflow。
+- 新增 GitHub Actions 检查 workflow、手动 Windows exe 候选构建 workflow，并支持推送 `v*` tag 自动创建 Release 与上传 Windows 包。
 - 构建流程新增源码与 exe 自检，用于验证 Tkinter、关键依赖和模板加载。
 - 打包自检增加超时保护和 self-test 哨兵触发，避免 windowed exe 自检异常时无限等待。
 
