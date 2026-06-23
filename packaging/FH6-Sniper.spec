@@ -7,6 +7,12 @@ project_root = Path(SPECPATH).parent
 python_root = Path(sys.base_prefix)
 
 datas = [(str(project_root / "templates"), "templates")]
+if (project_root / "templates_zh-CN").exists():
+    datas.append((str(project_root / "templates_zh-CN"), "templates_zh-CN"))
+for name in ("LICENSE", "README.md", "CHANGELOG.md"):
+    path = project_root / name
+    if path.exists():
+        datas.append((str(path), "."))
 if (python_root / "Lib" / "tkinter").exists():
     datas.append((str(python_root / "Lib" / "tkinter"), "tkinter"))
 if (python_root / "tcl").exists():

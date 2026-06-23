@@ -37,6 +37,8 @@ jobs:
           @'
           import cv2
           import numpy as np
+          import shutil
+          from pathlib import Path
 
           from fh6_sniper import vision
           from fh6_sniper.config import Config
@@ -46,10 +48,19 @@ jobs:
 
 
           templates = vision.load_templates("templates")
+          zh_templates = vision.load_templates("templates_zh-CN")
+          assert len(templates) == len(zh_templates)
+          assert "buy_out_title.png" in templates
+          assert "buy_out_title.png" in zh_templates
+
+          unicode_dir = Path("build") / "中文模板读取测试"
+          unicode_dir.mkdir(parents=True, exist_ok=True)
+          tmp_path = unicode_dir / "search.png"
+          shutil.copyfile("templates/search.png", tmp_path)
+          assert vision.read_image(tmp_path).shape[:2] == (68, 816)
 
           frame = np.full((1080, 1920, 3), 127, dtype=np.uint8)
-          player = cv2.imread("templates/player_options.png")
-          assert player is not None
+          player = vision.read_image("templates/player_options.png")
           y, x = 250, 650
           frame[y:y + player.shape[0], x:x + player.shape[1]] = player
           assert vision.identify_screen(
@@ -57,8 +68,7 @@ jobs:
               targets={Screen.PLAYER_OPTIONS}) == Screen.PLAYER_OPTIONS
 
           auction_frame = np.full((1080, 1920, 3), 127, dtype=np.uint8)
-          auction = cv2.imread("templates/auction_options.png")
-          assert auction is not None
+          auction = vision.read_image("templates/auction_options.png")
           y, x = 300, 620
           auction_frame[y:y + auction.shape[0], x:x + auction.shape[1]] = auction
           assert vision.identify_screen(

@@ -69,8 +69,9 @@ def _run_self_test() -> int:
 
     def _templates_check():
         from fh6_sniper import vision
-        templates = vision.load_templates(resource_dir / "templates")
-        return f"{len(templates)} templates"
+        en_templates = vision.load_templates(resource_dir / "templates")
+        zh_templates = vision.load_templates(resource_dir / "templates_zh-CN")
+        return f"en-US={len(en_templates)} zh-CN={len(zh_templates)}"
 
     check("templates", _templates_check)
 
@@ -175,7 +176,7 @@ def main() -> None:
     cfg = load_config(paths.app_dir() / "config.json")
     _log_config(cfg)
     templates = vision.load_templates(
-        paths.resource_dir() / cfg.template_dir,
+        paths.resource_dir() / cfg.effective_template_dir(),
         moving_background=cfg.moving_background)
     io = GameIO(cfg, templates)
     overlay = Overlay(
@@ -271,12 +272,15 @@ def main() -> None:
         """Apply settings dict to cfg in-place; persist; reload as needed."""
         log = logging.getLogger("fh6.settings")
         prev_bg = cfg.moving_background
+        prev_template_dir = cfg.effective_template_dir()
         prev_start = cfg.hotkey_start_stop
         prev_panic = cfg.hotkey_panic
         prev_capturable = getattr(cfg, "overlay_capturable", False)
         prev_window_capture = getattr(cfg, "window_content_capture", False)
         diffs = []
         for key, value in values.items():
+            if key == "game_language" and value not in ("en-US", "zh-CN"):
+                value = "en-US"
             old = getattr(cfg, key, None)
             if old != value:
                 diffs.append(f"{key} {old!r} -> {value!r}")
@@ -290,6 +294,20 @@ def main() -> None:
             capture.reset_normalize_plan()
             log.info("background window capture -> %s",
                      cfg.window_content_capture)
+        next_template_dir = cfg.effective_template_dir()
+        if (cfg.moving_background != prev_bg
+                or next_template_dir != prev_template_dir):
+            try:
+                new_templates = vision.load_templates(
+                    paths.resource_dir() / next_template_dir,
+                    moving_background=cfg.moving_background)
+            except Exception as exc:
+                log.exception("template reload failed")
+                events.error("模板重新加载失败：%s", exc)
+                return f"设置未保存：模板重新加载失败：{exc}"
+            io.templates = new_templates
+            log.info("templates reloaded (dir=%s, moving_background=%s)",
+                     next_template_dir, cfg.moving_background)
         try:
             save_config(cfg, paths.app_dir() / "config.json")
         except Exception as exc:
@@ -297,16 +315,6 @@ def main() -> None:
             events.error("配置保存失败：%s", exc)
             return f"无法保存配置：{exc}"
         events.info("设置已保存：%d 项变更", len(diffs))
-        if cfg.moving_background != prev_bg:
-            try:
-                io.templates = vision.load_templates(
-                    paths.resource_dir() / cfg.template_dir,
-                    moving_background=cfg.moving_background)
-                log.info("templates reloaded (moving_background=%s)",
-                         cfg.moving_background)
-            except Exception as exc:
-                log.exception("template reload failed")
-                return f"已保存，但模板重新加载失败：{exc}"
         if (cfg.hotkey_start_stop != prev_start
                 or cfg.hotkey_panic != prev_panic):
             try:

@@ -5,10 +5,15 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 DEFAULT_CONFIG_PATH = Path("config.json")
+GAME_LANGUAGE_TEMPLATE_DIRS = {
+    "en-US": "templates",
+    "zh-CN": "templates_zh-CN",
+}
 
 
 @dataclass
 class Config:
+    game_language: str = "en-US"
     window_title: str = "Forza Horizon 6"
     resolution: tuple = (1920, 1080)
     match_threshold: float = 0.80
@@ -75,6 +80,13 @@ class Config:
             return self.hdr_lime_hsv_lower, self.hdr_lime_hsv_upper
         return self.lime_hsv_lower, self.lime_hsv_upper
 
+    def effective_template_dir(self) -> str:
+        """Return the template directory for the selected game UI language."""
+        if self.template_dir not in GAME_LANGUAGE_TEMPLATE_DIRS.values():
+            return self.template_dir
+        return GAME_LANGUAGE_TEMPLATE_DIRS.get(
+            self.game_language, GAME_LANGUAGE_TEMPLATE_DIRS["en-US"])
+
 
 _TUPLE_FIELDS = {
     name for name, f in Config.__dataclass_fields__.items()
@@ -94,6 +106,11 @@ def load_config(path=DEFAULT_CONFIG_PATH) -> Config:
             data[key] = tuple(data[key])
     known = set(Config.__dataclass_fields__)
     cfg = Config(**{k: v for k, v in data.items() if k in known})
+    if ("game_language" not in data
+            and data.get("template_dir") == GAME_LANGUAGE_TEMPLATE_DIRS["zh-CN"]):
+        cfg.game_language = "zh-CN"
+    if cfg.game_language not in GAME_LANGUAGE_TEMPLATE_DIRS:
+        cfg.game_language = "en-US"
     # Preserve any extra keys as attributes on cfg. Lets a private config.json
     # carry dev / power-user flags (e.g. overlay_capturable) without those
     # keys ever appearing in a freshly auto-generated config.
@@ -109,6 +126,8 @@ def save_config(cfg: Config, path=DEFAULT_CONFIG_PATH) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = asdict(cfg)
+    if data.get("game_language") not in GAME_LANGUAGE_TEMPLATE_DIRS:
+        data["game_language"] = "en-US"
     declared = set(Config.__dataclass_fields__)
     for key, value in cfg.__dict__.items():           # round-trip extras
         if key not in declared:

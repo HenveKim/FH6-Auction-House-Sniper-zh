@@ -66,7 +66,8 @@ jobs:
             使用说明：
             - 下载并解压 `FH6-Sniper-${{ github.ref_name }}-windows.zip`。
             - 运行 `FH6-Sniper/FH6-Sniper.exe`。
-            - 当前版本仍要求游戏语言为 `English US`。
+            - 默认识别模板仍为 `English US`；简体中文游戏 UI 识别为实验支持，请在设置中切换。
             - 后台模式、实验性窗口捕获和最小化限制请以 README 说明为准。
+            - 本项目按 GPLv3 发布，中文模板资产来源请见 README。
 
             免责声明：本项目为非官方开源项目，与 Microsoft、Playground Games、Forza 无官方关联；自动化使用风险由使用者自行承担。

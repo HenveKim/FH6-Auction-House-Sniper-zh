@@ -19,7 +19,7 @@ else:
 log = logging.getLogger("fh6.sniper")
 
 UNRECOGNIZED_GAME_HINT = (
-    "已停止：未识别游戏画面，请检查 English US、16:9 无黑边、UI 100 或窗口遮挡"
+    "已停止：未识别游戏画面，请检查游戏语言/识别模板、16:9 无黑边、UI 100 或窗口遮挡"
 )
 
 
@@ -76,6 +76,10 @@ class GameIO:
         """Per-slot (sold, populated) flags. Used by the render-wait gate."""
         frame = self._frame()
         return vision.slot_states(frame)
+
+    def buy_out_scores(self) -> dict[str, float]:
+        frame = self._frame()
+        return vision.buy_out_scores(frame, self.templates)
 
     def press(self, name: str, times: int = 1) -> None:
         log.info("press %s%s", name, f" x{times}" if times > 1 else "")
@@ -196,7 +200,7 @@ class Sniper:
         new_value = not cfg.moving_background
         try:
             candidate = vision.load_templates(
-                paths.resource_dir() / cfg.template_dir,
+                paths.resource_dir() / cfg.effective_template_dir(),
                 moving_background=new_value)
         except Exception:
             log.exception("auto-toggle: failed to load alternate templates")
@@ -204,8 +208,12 @@ class Sniper:
         frame = capture.grab_screen(
             cfg.window_title,
             use_window_capture=getattr(cfg, "window_content_capture", False))
+        verification_templates = {
+            name: template for name, template in candidate.items()
+            if name != "buy_out_title.png"
+        }
         result = vision.identify_screen(
-            frame, candidate, cfg.match_threshold,
+            frame, verification_templates, cfg.match_threshold,
             targets={Screen.BUY_OUT, Screen.PLAYER_OPTIONS})
         if result not in (Screen.BUY_OUT, Screen.PLAYER_OPTIONS):
             log.info("auto-toggle skipped: alternate variant also doesn't "

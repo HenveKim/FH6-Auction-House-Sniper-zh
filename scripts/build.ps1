@@ -9,6 +9,10 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 Set-Location $Root
+$BuildTemp = Join-Path $Root "build\tmp"
+New-Item -ItemType Directory -Force -Path $BuildTemp | Out-Null
+$env:TEMP = $BuildTemp
+$env:TMP = $BuildTemp
 
 function Invoke-Native {
     param(
@@ -39,8 +43,7 @@ if (-not (Test-Path $Python)) {
     Invoke-Native { & $PythonExe -m venv $Venv }
 }
 
-Invoke-Native { & $Python -m pip install --upgrade pip }
-Invoke-Native { & $Python -m pip install -r requirements.md }
+Invoke-Native { & $Python -m pip install --disable-pip-version-check --no-input -r requirements.md }
 Test-TkinterRuntime
 
 if ($SourceSelfTest) {
@@ -51,6 +54,12 @@ Invoke-Native { & $Python -m PyInstaller --clean --noconfirm packaging\FH6-Snipe
 
 $Exe = Join-Path $Root "dist\FH6-Sniper\FH6-Sniper.exe"
 $ExeDir = Split-Path -Parent $Exe
+foreach ($Name in @("LICENSE", "README.md", "CHANGELOG.md")) {
+    $Source = Join-Path $Root $Name
+    if (Test-Path $Source) {
+        Copy-Item -LiteralPath $Source -Destination $ExeDir -Force
+    }
+}
 $SelfTestRequest = Join-Path $ExeDir "self-test.request"
 $SelfTestLog = Join-Path $ExeDir "logs\self-test.log"
 if (Test-Path $SelfTestLog) {

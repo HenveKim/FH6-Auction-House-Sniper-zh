@@ -46,6 +46,8 @@ _LOG_TAG_COLORS = {
 
 _SETTINGS_FIELDS = (
     # (group, key, label, kind, options)
+    ("识别设置", "game_language",         "游戏界面语言 / 识别模板", "choice",
+     (("en-US", "English US"), ("zh-CN", "简体中文"))),
     ("常用",     "collect_after_buyout",   "自动领取已赢车辆", "bool", None),
     ("常用",     "moving_background",      "动态背景模式（FH6 视频）", "bool", None),
     ("常用",     "notify_sound",           "成功时播放提示音", "bool", None),
@@ -305,7 +307,7 @@ class Overlay:
             if group == "常用":
                 self._build_feedback_section(
                     self._settings_interior, group, buckets[group])
-            elif group == "后台模式":
+            elif group in ("识别设置", "后台模式"):
                 self._build_open_section(
                     self._settings_interior, group, buckets[group])
             else:
@@ -366,6 +368,8 @@ class Overlay:
         for key, label, kind, opts in fields:
             if kind == "slider":
                 self._build_slider(content, key, label, *opts)
+            elif kind == "choice":
+                self._build_choice(content, key, label, opts)
             elif kind == "bool":
                 row = tk.Frame(content, bg=_BG)
                 row.pack(fill="x", pady=3)
@@ -384,6 +388,8 @@ class Overlay:
         for key, label, kind, opts in fields:
             if kind == "slider":
                 self._build_slider(content, key, label, *opts)
+            elif kind == "choice":
+                self._build_choice(content, key, label, opts)
             elif kind == "bool":
                 row = tk.Frame(content, bg=_BG)
                 row.pack(fill="x", padx=18, pady=(3, 0))
@@ -476,6 +482,29 @@ class Overlay:
         self._field_vars[key] = var
         self._field_widgets[key] = entry
         var._kind = kind        # tag for parsing on save
+
+    def _build_choice(self, parent, key, label, options):
+        row = tk.Frame(parent, bg=_BG)
+        row.pack(fill="x", padx=18, pady=(6, 0))
+        tk.Label(row, text=label.upper(), bg=_BG, fg=_DIM,
+                 font=("Segoe UI", 8), anchor="w").pack(fill="x")
+        labels = {value: text for value, text in options}
+        values = {text: value for value, text in options}
+        var = tk.StringVar(value=options[0][1])
+        var._choices = values
+        var._labels = labels
+
+        menu = tk.OptionMenu(row, var, *values.keys())
+        menu.configure(
+            bg=_CARD, fg=_TEXT, activebackground=_DIVIDER,
+            activeforeground=_TEXT, relief="flat", bd=0,
+            highlightthickness=1, highlightbackground=_DIVIDER,
+            font=("Segoe UI", 10), cursor="hand2")
+        menu["menu"].configure(bg=_CARD, fg=_TEXT, activebackground=_DIVIDER,
+                               activeforeground=_TEXT, bd=0)
+        menu.pack(fill="x", ipady=1, pady=(2, 0))
+        self._field_vars[key] = var
+        self._field_widgets[key] = menu
 
     def _make_check_widget(self, parent, key, label, wraplength=120):
         """Build a checkbox into parent. Caller is responsible for placement."""
@@ -634,7 +663,8 @@ class Overlay:
             elif isinstance(var, tk.DoubleVar):
                 var.set(float(value))
             else:
-                var.set(str(value))
+                labels = getattr(var, "_labels", None)
+                var.set(labels.get(value, str(value)) if labels else str(value))
         if self._threshold_label is not None:
             v = float(self._field_vars["match_threshold"].get())
             self._threshold_label.config(
@@ -657,6 +687,8 @@ class Overlay:
                     out[key] = float(raw)
                 elif kind == "int":
                     out[key] = int(float(raw))     # tolerate "180.0"
+                elif kind == "choice":
+                    out[key] = getattr(var, "_choices", {}).get(raw, str(raw))
                 else:
                     out[key] = str(raw).strip()
             except (ValueError, TypeError):

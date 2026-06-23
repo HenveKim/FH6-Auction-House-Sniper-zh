@@ -31,6 +31,7 @@ TEMPLATE_SCREENS: dict[str, Screen] = {
     "player_options.png": Screen.PLAYER_OPTIONS,
     "buy_out.png": Screen.BUY_OUT,
     "buy_out_bgoff.png": Screen.BUY_OUT,
+    "buy_out_title.png": Screen.BUY_OUT,
     "buy_out_progress.png": Screen.BUYOUT_PROGRESS,
     "buy_out_progress_bgoff.png": Screen.BUYOUT_PROGRESS,
     "buyout_successful.png": Screen.BUYOUT_SUCCESS,
@@ -71,6 +72,21 @@ def _gray(img: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 
+def read_image(path) -> np.ndarray:
+    """Read an image from paths that may contain non-ASCII characters."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"template file missing: {path}")
+    try:
+        data = np.fromfile(str(path), dtype=np.uint8)
+    except OSError as exc:
+        raise OSError(f"template read failed: {path}") from exc
+    img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError(f"template decode failed: {path}")
+    return img
+
+
 def match_template(scene: np.ndarray, template: np.ndarray) -> float:
     """Best NCC score of template inside scene. 0.0 if template is too big."""
     s, t = _gray(scene), _gray(template)
@@ -109,9 +125,7 @@ def load_templates(template_dir, moving_background: bool = True) -> dict:
         if not moving_background and _has_bgoff_variant(name):
             continue
         path = Path(template_dir) / name
-        img = cv2.imread(str(path))
-        if img is None:
-            raise FileNotFoundError(f"template missing: {path}")
+        img = read_image(path)
         gray = _gray(img)
         out[name] = gray
         _DOWNSCALED_TEMPLATES[id(gray)] = _downscale(gray)
@@ -137,6 +151,7 @@ _MATCH_SCALE = 0.5
 # slightly lower acceptance threshold.
 TEMPLATE_MIN_THRESHOLDS = {
     "player_options.png": 0.70,
+    "buy_out_title.png": 0.72,
 }
 
 
@@ -155,6 +170,7 @@ TEMPLATE_REGIONS = {
     "player_options.png":     (420, 180, 1500, 650),
     "buy_out.png":               (520, 470, 1400, 620),
     "buy_out_bgoff.png":         (520, 470, 1400, 620),
+    "buy_out_title.png":         (520, 350, 1400, 510),
     "buy_out_progress.png":      (520, 470, 1400, 620),
     "buy_out_progress_bgoff.png":(520, 470, 1400, 620),
     "buyout_successful.png":  (539, 334, 1374, 612),
@@ -168,7 +184,7 @@ TEMPLATE_REGIONS = {
 # buy_out_progress body are short text-band crops; half-res blurs the text
 # enough that live frames drop below the 0.80 threshold (~0.78 vs ~0.86).
 _FULL_RES_TEMPLATES = {
-    "buy_out.png", "buy_out_bgoff.png",
+    "buy_out.png", "buy_out_bgoff.png", "buy_out_title.png",
     "buy_out_progress.png", "buy_out_progress_bgoff.png",
 }
 
@@ -179,7 +195,7 @@ def screen_scores(scene_bgr, templates: dict, targets=None) -> dict:
     run at full res. If `targets` is a set of Screen, only those templates
     (plus the priority results templates) are scored."""
     if targets is not None:
-        wanted = set(_RESULTS_PRIORITY)
+        wanted = set() if Screen.BUY_OUT in targets else set(_RESULTS_PRIORITY)
         wanted |= {n for n, scr in TEMPLATE_SCREENS.items() if scr in targets}
         templates = {n: t for n, t in templates.items() if n in wanted}
     gray = _gray(scene_bgr)
@@ -212,6 +228,15 @@ def identify_screen(scene_bgr, templates: dict, threshold: float,
         if score >= required and score >= best_score:
             best_screen, best_score = TEMPLATE_SCREENS[name], score
     return best_screen
+
+
+def buy_out_scores(scene_bgr, templates: dict) -> dict[str, float]:
+    """Return only the BUY_OUT template scores for lightweight diagnostics."""
+    scores = screen_scores(scene_bgr, templates, targets={Screen.BUY_OUT})
+    return {
+        name: score for name, score in scores.items()
+        if TEMPLATE_SCREENS.get(name) == Screen.BUY_OUT
+    }
 
 
 # Search-config Confirm button band at 1920x1080.

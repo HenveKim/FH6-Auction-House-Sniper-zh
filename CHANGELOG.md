@@ -2,6 +2,19 @@
 
 最新变更在最前面。每个章节标题都是发布日期。
 
+## 未发布
+
+### 中文识别候选
+- 新增简体中文游戏 UI 识别模板目录 `templates_zh-CN/`，默认仍使用 English US 模板。
+- 新增 **游戏界面语言 / 识别模板** 设置，可在 `en-US` 与 `zh-CN` 之间切换。
+- 新增 `buy_out_title.png` 买断标题模板辅助识别，提高 Buy Out 确认框识别冗余。
+- 模板读取改为兼容中文路径的方式，避免程序放在中文目录时 OpenCV 读取模板失败。
+- 打包流程会包含 `templates_zh-CN/`、`LICENSE`、README 和 CHANGELOG。
+
+### 授权
+- 新增 GPLv3 `LICENSE` 文件。
+- README 更新为 GPLv3 授权说明，并标明中文模板来源于 `Dr-hydra/FH6-Auction-House-Sniper`。
+
 ## v1.3.0 - 2026-06-22
 
 ### 后台与窗口化候选版
