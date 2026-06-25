@@ -69,8 +69,27 @@ def _run_self_test() -> int:
 
     def _templates_check():
         from fh6_sniper import vision
-        en_templates = vision.load_templates(resource_dir / "templates")
-        zh_templates = vision.load_templates(resource_dir / "templates_zh-CN")
+
+        def _kind(exc):
+            if isinstance(exc, FileNotFoundError):
+                return "missing"
+            if isinstance(exc, ValueError):
+                return "decode failed"
+            if isinstance(exc, OSError):
+                return "read failed"
+            return "failed"
+
+        def _load_profile(code, folder):
+            template_dir = resource_dir / folder
+            try:
+                return vision.load_templates(template_dir)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"{code} templates {_kind(exc)} "
+                    f"(dir={template_dir}): {exc}") from exc
+
+        en_templates = _load_profile("en-US", "templates")
+        zh_templates = _load_profile("zh-CN", "templates_zh-CN")
         return f"en-US={len(en_templates)} zh-CN={len(zh_templates)}"
 
     check("templates", _templates_check)
@@ -137,6 +156,23 @@ def _log_config(cfg) -> None:
                                    json.dumps(body, sort_keys=True))
 
 
+def _template_error_kind(exc: Exception) -> str:
+    if isinstance(exc, FileNotFoundError):
+        return "缺少模板文件"
+    if isinstance(exc, ValueError):
+        return "模板解码失败"
+    if isinstance(exc, OSError):
+        return "模板读取失败"
+    return "模板加载失败"
+
+
+def _format_template_error(exc: Exception, cfg, template_dir: str) -> str:
+    return (
+        f"{_template_error_kind(exc)}"
+        f"（游戏界面语言={cfg.game_language}, 模板目录={template_dir}）：{exc}"
+    )
+
+
 class OverlayEventHandler(logging.Handler):
     """Send user-facing event records to the Tk overlay safely."""
 
@@ -175,9 +211,15 @@ def main() -> None:
     logging.getLogger("fh6").info("FH6 Sniper starting (log: %s)", log_path)
     cfg = load_config(paths.app_dir() / "config.json")
     _log_config(cfg)
-    templates = vision.load_templates(
-        paths.resource_dir() / cfg.effective_template_dir(),
-        moving_background=cfg.moving_background)
+    template_dir = cfg.effective_template_dir()
+    try:
+        templates = vision.load_templates(
+            paths.resource_dir() / template_dir,
+            moving_background=cfg.moving_background)
+    except Exception as exc:
+        message = _format_template_error(exc, cfg, template_dir)
+        logging.getLogger("fh6.main").exception(message)
+        raise RuntimeError(message) from exc
     io = GameIO(cfg, templates)
     overlay = Overlay(
         hide_from_capture=not getattr(cfg, "overlay_capturable", False))
@@ -302,9 +344,10 @@ def main() -> None:
                     paths.resource_dir() / next_template_dir,
                     moving_background=cfg.moving_background)
             except Exception as exc:
+                message = _format_template_error(exc, cfg, next_template_dir)
                 log.exception("template reload failed")
-                events.error("模板重新加载失败：%s", exc)
-                return f"设置未保存：模板重新加载失败：{exc}"
+                events.error("模板重新加载失败：%s", message)
+                return f"设置未保存：{message}"
             io.templates = new_templates
             log.info("templates reloaded (dir=%s, moving_background=%s)",
                      next_template_dir, cfg.moving_background)

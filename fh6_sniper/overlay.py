@@ -17,6 +17,9 @@ _RED      = "#e2685f"
 _STOP     = "#e0524b"
 _STOP_HV  = "#c43f39"
 _START_HV = "#b0d800"
+_WINDOW_WIDTH = 372
+_TEXT_WRAP = _WINDOW_WIDTH - 44
+_OPEN_SETTING_WRAP = _WINDOW_WIDTH - 96
 
 _PAUSED_WORDS = ("paused", "暂停")
 _STOPPED_WORDS = (
@@ -109,7 +112,8 @@ class Overlay:
         self._build()
         self._show_tab("STATUS")
         self.root.update_idletasks()
-        self.root.geometry(f"344x{self.root.winfo_reqheight()}+24+24")
+        self.root.geometry(
+            f"{_WINDOW_WIDTH}x{self.root.winfo_reqheight()}+24+24")
         self.set_capturable(not hide_from_capture)
         self._tick()
 
@@ -188,7 +192,7 @@ class Overlay:
         self._status = tk.Label(
             frame, textvariable=self._status_var, bg=_BG, fg=_LIME,
             font=("Segoe UI", 13), anchor="center", justify="center",
-            wraplength=300, height=2)
+            wraplength=_TEXT_WRAP, height=2)
         self._status.pack(fill="x", padx=18, pady=(11, 0))
 
         self._build_stats(frame)
@@ -210,7 +214,7 @@ class Overlay:
         tk.Label(
             frame, text="只显示启动、购车、失败、跳过等关键事件",
             bg=_BG, fg=_DIM, font=("Segoe UI", 8),
-            anchor="w", wraplength=300).pack(
+            anchor="w", wraplength=_TEXT_WRAP).pack(
                 fill="x", padx=18, pady=(12, 0))
 
         log_wrap = tk.Frame(frame, bg=_CARD, highlightthickness=1,
@@ -274,11 +278,15 @@ class Overlay:
         self._settings_canvas = tk.Canvas(
             scroll_wrap, bg=_BG, highlightthickness=0, bd=0)
         self._settings_canvas.pack(side="left", fill="both", expand=True)
-        self._settings_scrollbar = tk.Scrollbar(
-            scroll_wrap, orient="vertical",
-            command=self._settings_canvas.yview)
+        self._settings_scrollbar = tk.Canvas(
+            scroll_wrap, width=8, bg=_BG, highlightthickness=0,
+            bd=0, cursor="hand2")
+        self._settings_scrollbar.bind(
+            "<Button-1>", self._jump_settings_scroll)
+        self._settings_scrollbar.bind(
+            "<B1-Motion>", self._jump_settings_scroll)
         self._settings_canvas.configure(
-            yscrollcommand=self._settings_scrollbar.set)
+            yscrollcommand=self._update_settings_scrollbar)
 
         self._settings_interior = tk.Frame(self._settings_canvas, bg=_BG)
         win_id = self._settings_canvas.create_window(
@@ -373,7 +381,8 @@ class Overlay:
             elif kind == "bool":
                 row = tk.Frame(content, bg=_BG)
                 row.pack(fill="x", pady=3)
-                self._make_check_widget(row, key, label, wraplength=248)
+                self._make_check_widget(
+                    row, key, label, wraplength=_OPEN_SETTING_WRAP)
             else:
                 self._build_entry(content, key, label, kind)
 
@@ -494,17 +503,44 @@ class Overlay:
         var._choices = values
         var._labels = labels
 
-        menu = tk.OptionMenu(row, var, *values.keys())
-        menu.configure(
-            bg=_CARD, fg=_TEXT, activebackground=_DIVIDER,
-            activeforeground=_TEXT, relief="flat", bd=0,
-            highlightthickness=1, highlightbackground=_DIVIDER,
-            font=("Segoe UI", 10), cursor="hand2")
-        menu["menu"].configure(bg=_CARD, fg=_TEXT, activebackground=_DIVIDER,
-                               activeforeground=_TEXT, bd=0)
-        menu.pack(fill="x", ipady=1, pady=(2, 0))
+        pill = tk.Frame(row, bg=_DIVIDER, highlightthickness=1,
+                        highlightbackground=_DIVIDER)
+        pill.pack(fill="x", pady=(4, 0))
+        cells = []
+
+        def _render(*_a):
+            current = var.get()
+            for text, cell in cells:
+                active = (text == current)
+                cell.config(
+                    bg=_LIME if active else _CARD,
+                    fg=_BG if active else _TEXT)
+
+        def _choose(text):
+            var.set(text)
+
+        def _hover(text, cell, inside):
+            if var.get() == text:
+                return
+            cell.config(bg=_DIVIDER if inside else _CARD)
+
+        for text in values:
+            cell = tk.Label(
+                pill, text=text, bg=_CARD, fg=_TEXT,
+                font=("Segoe UI", 9, "bold"), padx=8, pady=6,
+                cursor="hand2")
+            cell.pack(side="left", fill="x", expand=True, padx=1, pady=1)
+            cell.bind("<Button-1>", lambda _e, t=text: _choose(t))
+            cell.bind(
+                "<Enter>", lambda _e, t=text, c=cell: _hover(t, c, True))
+            cell.bind(
+                "<Leave>", lambda _e, t=text, c=cell: _hover(t, c, False))
+            cells.append((text, cell))
+
+        var.trace_add("write", _render)
+        _render()
         self._field_vars[key] = var
-        self._field_widgets[key] = menu
+        self._field_widgets[key] = pill
 
     def _make_check_widget(self, parent, key, label, wraplength=120):
         """Build a checkbox into parent. Caller is responsible for placement."""
@@ -553,7 +589,7 @@ class Overlay:
                 x = self.root.winfo_x()
                 y = self.root.winfo_y()
                 self.root.geometry(
-                    f"344x{self.root.winfo_reqheight()}+{x}+{y}")
+                    f"{_WINDOW_WIDTH}x{self.root.winfo_reqheight()}+{x}+{y}")
         except Exception:
             pass
 
@@ -565,6 +601,42 @@ class Overlay:
                 int(-event.delta / 120), "units")
         except Exception:
             pass
+
+    def _update_settings_scrollbar(self, first=0.0, last=1.0):
+        if self._settings_scrollbar is None:
+            return
+        try:
+            first, last = float(first), float(last)
+        except (TypeError, ValueError):
+            first, last = 0.0, 1.0
+        canvas = self._settings_scrollbar
+        canvas.delete("all")
+        height = canvas.winfo_height()
+        if height <= 4:
+            return
+        pad = 2
+        x = 4
+        canvas.create_line(
+            x, pad, x, height - pad, fill=_DIVIDER, width=3,
+            capstyle="round")
+        if first <= 0.0 and last >= 1.0:
+            return
+        usable = max(1, height - pad * 2)
+        thumb_h = max(20, int((last - first) * usable))
+        y0 = pad + int(first * usable)
+        y1 = min(height - pad, y0 + thumb_h)
+        canvas.create_line(
+            x, y0, x, y1, fill=_SCROLL, width=4,
+            capstyle="round")
+
+    def _jump_settings_scroll(self, event):
+        if self._settings_canvas is None or self._settings_scrollbar is None:
+            return "break"
+        height = max(1, self._settings_scrollbar.winfo_height())
+        fraction = max(0.0, min(1.0, event.y / height))
+        self._settings_canvas.yview_moveto(fraction)
+        self._update_settings_scrollbar(*self._settings_canvas.yview())
+        return "break"
 
     def _refit_settings(self):
         """Size the canvas + window so settings fit, capped at screen height."""
@@ -591,7 +663,7 @@ class Overlay:
                     self._settings_scrollbar.pack_forget()
             x = self.root.winfo_x()
             y = self.root.winfo_y()
-            self.root.geometry(f"344x{desired}+{x}+{y}")
+            self.root.geometry(f"{_WINDOW_WIDTH}x{desired}+{x}+{y}")
         except Exception:
             pass
 

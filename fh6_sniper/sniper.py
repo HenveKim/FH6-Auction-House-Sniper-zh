@@ -234,6 +234,24 @@ class Sniper:
         events.warning("已自动切换动态背景模式 -> %s", new_value)
         return True
 
+    def _log_buy_out_scores(self, reason: str) -> None:
+        """Log BUY_OUT template scores when a dialog wait times out."""
+        try:
+            scores = self.io.buy_out_scores()
+        except Exception:
+            log.exception("buy-out score diagnostic failed (%s)", reason)
+            return
+        if not scores:
+            log.info("buy-out scores (%s): no BUY_OUT templates loaded",
+                     reason)
+            return
+        parts = []
+        for name in sorted(scores):
+            required = vision.TEMPLATE_MIN_THRESHOLDS.get(
+                name, self.cfg.match_threshold)
+            parts.append(f"{name}={scores[name]:.3f}/{required:.2f}")
+        log.info("buy-out scores (%s): %s", reason, ", ".join(parts))
+
     def wait_for(self, screens: set, timeout: float):
         """Poll until the current screen is in `screens`, or timeout. Time
         spent in _guard_focus does not count toward the timeout."""
@@ -374,7 +392,11 @@ class Sniper:
         return "recover_failed"
 
     def _skip_player_options(self) -> str:
-        log.info("player options detected; treating listing as sold")
+        log.info(
+            "player options detected; treating listing as sold "
+            "(language=%s, moving_background=%s)",
+            getattr(self.cfg, "game_language", "en-US"),
+            self.cfg.moving_background)
         events.info("车辆已售出，正在跳过")
         return self._escape_player_options()
 
@@ -465,6 +487,9 @@ class Sniper:
                 self.sleeper(0.2)              # 5 Hz - request is in flight, calm
             else:
                 self._poll_delay()             # ~15 Hz - still figuring out state
+        log.info("confirm_yes timed out "
+                 "(in_flight=%s, enter_attempts=%d)",
+                 in_flight, enter_attempts)
         return None
 
     def _collect(self) -> None:
@@ -519,6 +544,7 @@ class Sniper:
 
         slot = self.io.first_buyable_slot()
         if slot == 0:
+            log.info("all visible result slots are sold or unbuyable")
             self._status("列表均已售出，正在跳过")
             events.info("列表均已售出，正在跳过")
             self._back_to_landing(known=result)
@@ -530,6 +556,7 @@ class Sniper:
             self._press("down")
 
         if slot > 1 and self.io.first_buyable_slot() != slot:
+            log.info("target slot changed while navigating; treating as sold")
             self._status("导航时车辆已售出，正在跳过")
             events.info("导航时车辆已售出，正在跳过")
             self._back_to_landing(known=result)
@@ -557,14 +584,19 @@ class Sniper:
             {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
         if seen == Screen.PLAYER_OPTIONS:
             return self._skip_player_options()
-        if seen is None and self.io.screen(
-                targets={Screen.PLAYER_OPTIONS}) == Screen.PLAYER_OPTIONS:
-            return self._skip_player_options()
-        if seen is None and self._try_toggle_moving_background():
-            seen = self.wait_for(
-                {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
-            if seen == Screen.PLAYER_OPTIONS:
+        if seen is None:
+            if self.io.screen(
+                    targets={Screen.PLAYER_OPTIONS}) == Screen.PLAYER_OPTIONS:
                 return self._skip_player_options()
+            self._log_buy_out_scores("buy-out dialog timeout")
+            if self._try_toggle_moving_background():
+                seen = self.wait_for(
+                    {Screen.BUY_OUT, Screen.PLAYER_OPTIONS}, dialog_timeout)
+                if seen == Screen.PLAYER_OPTIONS:
+                    return self._skip_player_options()
+                if seen is None:
+                    self._log_buy_out_scores(
+                        "buy-out dialog timeout after auto-toggle")
         if seen is None:
             return self._recover()
 
